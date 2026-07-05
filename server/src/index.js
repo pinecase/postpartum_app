@@ -322,6 +322,95 @@ app.post('/api/handovers', (req, res) => {
   res.status(201).json(db.prepare(`SELECT * FROM handovers WHERE id = ?`).get(r.lastInsertRowid));
 });
 
+// ---------- 管理后台 ----------
+app.get('/api/admin/summary', (req, res) => {
+  const dayStart = new Date();
+  dayStart.setHours(0, 0, 0, 0);
+  const dayStartIso = dayStart.toISOString();
+  const d14 = new Date(Date.now() - 13 * 86400000).toISOString().slice(0, 10);
+
+  const babies = db.prepare(`
+    SELECT b.id, b.name, b.sex, b.birth_date, b.birth_weight_g, b.status,
+      m.name AS mother_name, m.room,
+      (SELECT weight_g FROM baby_vitals WHERE baby_id = b.id AND weight_g IS NOT NULL ORDER BY time DESC LIMIT 1) AS latest_weight,
+      (SELECT jaundice_mg_dl FROM baby_vitals WHERE baby_id = b.id AND jaundice_mg_dl IS NOT NULL ORDER BY time DESC LIMIT 1) AS latest_jaundice,
+      (SELECT temperature_c FROM baby_vitals WHERE baby_id = b.id AND temperature_c IS NOT NULL ORDER BY time DESC LIMIT 1) AS latest_temp,
+      (SELECT COUNT(*) FROM baby_feeds WHERE baby_id = b.id AND time >= @day) AS feeds_today,
+      (SELECT COALESCE(SUM(amount_ml), 0) FROM baby_feeds WHERE baby_id = b.id AND time >= @day) AS milk_today,
+      (SELECT COUNT(*) FROM baby_diapers WHERE baby_id = b.id AND time >= @day AND type LIKE '%便%') AS stools_today
+    FROM babies b JOIN mothers m ON m.id = b.mother_id
+    ORDER BY b.status, m.room`).all({ day: dayStartIso });
+
+  const mothers = db.prepare(`
+    SELECT m.*,
+      (SELECT COUNT(*) FROM babies WHERE mother_id = m.id) AS baby_count,
+      (SELECT temperature_c FROM mother_vitals WHERE mother_id = m.id AND temperature_c IS NOT NULL ORDER BY time DESC LIMIT 1) AS latest_temp,
+      (SELECT systolic FROM mother_vitals WHERE mother_id = m.id AND systolic IS NOT NULL ORDER BY time DESC LIMIT 1) AS latest_systolic,
+      (SELECT diastolic FROM mother_vitals WHERE mother_id = m.id AND diastolic IS NOT NULL ORDER BY time DESC LIMIT 1) AS latest_diastolic,
+      (SELECT lochia_amount FROM mother_vitals WHERE mother_id = m.id AND lochia_amount IS NOT NULL ORDER BY time DESC LIMIT 1) AS latest_lochia,
+      (SELECT mood_score FROM mother_vitals WHERE mother_id = m.id AND mood_score IS NOT NULL ORDER BY time DESC LIMIT 1) AS latest_mood,
+      (SELECT pain_score FROM mother_vitals WHERE mother_id = m.id AND pain_score IS NOT NULL ORDER BY time DESC LIMIT 1) AS latest_pain
+    FROM mothers m ORDER BY m.status, m.room`).all();
+
+  const admissions = db.prepare(
+    `SELECT admission_date AS d, COUNT(*) AS c FROM mothers WHERE admission_date >= ? GROUP BY admission_date`
+  ).all(d14);
+  const discharges = db.prepare(
+    `SELECT substr(discharged_at, 1, 10) AS d, COUNT(*) AS c FROM mothers WHERE discharged_at IS NOT NULL AND discharged_at >= ? GROUP BY 1`
+  ).all(d14);
+  const milkDaily = db.prepare(
+    `SELECT substr(time, 1, 10) AS d, COALESCE(SUM(amount_ml), 0) AS total, COUNT(*) AS feeds FROM baby_feeds WHERE time >= ? GROUP BY 1 ORDER BY 1`
+  ).all(d14);
+  const deliveryDist = db.prepare(`SELECT delivery_type AS k, COUNT(*) AS c FROM mothers GROUP BY 1 ORDER BY 2 DESC`).all();
+
+  const totals = {
+    mothers_in_house: mothers.filter((m) => m.status === '在住').length,
+    babies_in_house: babies.filter((b) => b.status === '在住').length,
+    mothers_total: mothers.length,
+    admissions_30d: db.prepare(`SELECT COUNT(*) AS c FROM mothers WHERE admission_date >= ?`)
+      .get(new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)).c,
+    records_total:
+      db.prepare(`SELECT (SELECT COUNT(*) FROM baby_feeds) + (SELECT COUNT(*) FROM baby_diapers) +
+        (SELECT COUNT(*) FROM baby_vitals) + (SELECT COUNT(*) FROM baby_cares) +
+        (SELECT COUNT(*) FROM mother_vitals) AS c`).get().c,
+  };
+
+  res.json({
+    totals,
+    babies,
+    mothers,
+    trends: { admissions, discharges, milk_daily: milkDaily, delivery_dist: deliveryDist },
+    alerts: computeAlerts(),
+  });
+});
+
+const EXPORT_QUERIES = {
+  feeds: `SELECT f.time, m.room, b.name AS baby_name, m.name AS mother_name, f.method, f.amount_ml, f.duration_min, f.notes, f.recorded_by
+    FROM baby_feeds f JOIN babies b ON b.id = f.baby_id JOIN mothers m ON m.id = b.mother_id
+    WHERE f.time >= ? AND f.time < ? ORDER BY f.time`,
+  diapers: `SELECT d.time, m.room, b.name AS baby_name, m.name AS mother_name, d.type, d.stool_color, d.stool_consistency, d.notes, d.recorded_by
+    FROM baby_diapers d JOIN babies b ON b.id = d.baby_id JOIN mothers m ON m.id = b.mother_id
+    WHERE d.time >= ? AND d.time < ? ORDER BY d.time`,
+  baby_vitals: `SELECT v.time, m.room, b.name AS baby_name, m.name AS mother_name, v.temperature_c, v.weight_g, v.jaundice_mg_dl, v.heart_rate, v.resp_rate, v.notes, v.recorded_by
+    FROM baby_vitals v JOIN babies b ON b.id = v.baby_id JOIN mothers m ON m.id = b.mother_id
+    WHERE v.time >= ? AND v.time < ? ORDER BY v.time`,
+  cares: `SELECT c.time, m.room, b.name AS baby_name, m.name AS mother_name, c.care_type, c.notes, c.recorded_by
+    FROM baby_cares c JOIN babies b ON b.id = c.baby_id JOIN mothers m ON m.id = b.mother_id
+    WHERE c.time >= ? AND c.time < ? ORDER BY c.time`,
+  mother_vitals: `SELECT v.time, m.room, m.name AS mother_name, v.temperature_c, v.systolic, v.diastolic, v.pulse, v.lochia_amount, v.lochia_color, v.wound_status, v.breast_status, v.mood_score, v.pain_score, v.notes, v.recorded_by
+    FROM mother_vitals v JOIN mothers m ON m.id = v.mother_id
+    WHERE v.time >= ? AND v.time < ? ORDER BY v.time`,
+};
+
+app.get('/api/admin/records', (req, res) => {
+  const { type, from, to } = req.query;
+  const sql = EXPORT_QUERIES[type];
+  if (!sql) return res.status(400).json({ error: '未知记录类型' });
+  const fromIso = from ? `${from}T00:00:00.000Z` : '0000';
+  const toIso = to ? new Date(new Date(`${to}T00:00:00.000Z`).getTime() + 86400000).toISOString() : '9999';
+  res.json(db.prepare(sql).all(fromIso, toIso));
+});
+
 // ---------- 静态资源（生产构建） ----------
 const clientDist = path.join(__dirname, '..', '..', 'client', 'dist');
 if (fs.existsSync(clientDist)) {

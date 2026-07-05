@@ -550,6 +550,44 @@ td.wrap {
   margin-left: auto;
 }
 
+/* ---------- 管理后台 ---------- */
+.cell-danger {
+  color: var(--danger);
+  font-weight: 700;
+  background: var(--danger-soft);
+}
+
+.cell-warning {
+  color: var(--warning);
+  font-weight: 700;
+  background: var(--warning-soft);
+}
+
+.dist-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 14px;
+}
+
+.dist-label {
+  width: 110px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.dist-bar {
+  height: 16px;
+  background: #0d9488;
+  border-radius: 4px;
+  min-width: 4px;
+}
+
+.dist-num {
+  font-weight: 600;
+}
+
 /* ---------- 照片 ---------- */
 .photo-thumbs {
   display: flex;

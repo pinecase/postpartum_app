@@ -7,6 +7,7 @@ import MotherDetail from './pages/MotherDetail';
 import Tasks from './pages/Tasks';
 import Handover from './pages/Handover';
 import Admission from './pages/Admission';
+import Admin from './pages/Admin';
 
 function Header() {
   const { staff, current, setCurrent } = useStaff();
@@ -19,6 +20,7 @@ function Header() {
         <NavLink to="/tasks">{t('nav.tasks')}</NavLink>
         <NavLink to="/handover">{t('nav.handover')}</NavLink>
         <NavLink to="/admission">{t('nav.admission')}</NavLink>
+        <NavLink to="/admin">{t('nav.admin')}</NavLink>
       </nav>
       <div className="staff-picker">
         <div className="lang-switch">
@@ -58,6 +60,7 @@ export default function App() {
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/handover" element={<Handover />} />
             <Route path="/admission" element={<Admission />} />
+            <Route path="/admin" element={<Admin />} />
           </Routes>
         </main>
       </StaffProvider>
