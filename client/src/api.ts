@@ -77,6 +77,45 @@ export interface BabyCare {
   recorded_by: string | null;
 }
 
+export interface NeedScore {
+  code: string;
+  score: number;
+  confidence: 'high' | 'medium' | 'low';
+  evidence: string[];
+}
+
+export interface NeedsAnalysis {
+  needs: NeedScore[];
+  flags: { code: string; level: 'danger' | 'warning' }[];
+  context: {
+    hours_since_feed: number | null;
+    stool_count_24h: number | null;
+    hours_since_diaper: number | null;
+  };
+}
+
+export interface BabyObservation {
+  id: number;
+  baby_id: number;
+  time: string;
+  cry_type: string | null;
+  signals: string;    // JSON 数组字符串
+  temperature_c: number | null;
+  ambient_temp_c: number | null;
+  ambient_humidity_pct: number | null;
+  result: string;     // JSON：NeedsAnalysis
+  notes: string | null;
+  recorded_by: string | null;
+}
+
+export function parseObservation(o: BabyObservation): { signals: string[]; result: NeedsAnalysis | null } {
+  let signals: string[] = [];
+  let result: NeedsAnalysis | null = null;
+  try { signals = JSON.parse(o.signals || '[]'); } catch { /* 忽略损坏数据 */ }
+  try { result = o.result ? JSON.parse(o.result) : null; } catch { /* 忽略损坏数据 */ }
+  return { signals, result };
+}
+
 export interface MotherVital {
   id: number;
   mother_id: number;
@@ -165,6 +204,7 @@ export interface BabyDetailData extends Baby {
   diapers: Diaper[];
   vitals: BabyVital[];
   cares: BabyCare[];
+  observations: BabyObservation[];
   tasks: CareTask[];
   photos: PhotoRef[];
 }

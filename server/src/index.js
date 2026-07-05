@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { db } from './db.js';
 import { computeAlerts } from './alerts.js';
+import { analyzeNeeds, sanitizeObservation } from '../../shared/needs-engine.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -204,6 +205,9 @@ app.get('/api/babies/:id', (req, res) => {
   const diapers = db.prepare(`SELECT * FROM baby_diapers WHERE baby_id = ? ORDER BY time DESC LIMIT 300`).all(b.id);
   const vitals = db.prepare(`SELECT * FROM baby_vitals WHERE baby_id = ? ORDER BY time DESC LIMIT 300`).all(b.id);
   const cares = db.prepare(`SELECT * FROM baby_cares WHERE baby_id = ? ORDER BY time DESC LIMIT 300`).all(b.id);
+  const observations = db
+    .prepare(`SELECT * FROM baby_observations WHERE baby_id = ? ORDER BY time DESC LIMIT 100`)
+    .all(b.id);
   const tasks = db
     .prepare(`SELECT * FROM care_tasks WHERE subject_type = 'baby' AND subject_id = ? ORDER BY due_time DESC LIMIT 50`)
     .all(b.id);
@@ -212,8 +216,9 @@ app.get('/api/babies/:id', (req, res) => {
     ...photoRefs('diapers', `SELECT id FROM baby_diapers WHERE baby_id = ?`, b.id),
     ...photoRefs('vitals', `SELECT id FROM baby_vitals WHERE baby_id = ?`, b.id),
     ...photoRefs('cares', `SELECT id FROM baby_cares WHERE baby_id = ?`, b.id),
+    ...photoRefs('observations', `SELECT id FROM baby_observations WHERE baby_id = ?`, b.id),
   ];
-  res.json({ ...b, feeds, diapers, vitals, cares, tasks, photos });
+  res.json({ ...b, feeds, diapers, vitals, cares, observations, tasks, photos });
 });
 
 const babyExists = (id) => db.prepare(`SELECT id FROM babies WHERE id = ?`).get(id);
@@ -264,6 +269,47 @@ app.post('/api/babies/:id/cares', (req, res) => {
     .run(req.params.id, time || nowIso(), care_type, notes ?? null, recorded_by ?? null);
   savePhotos('cares', r.lastInsertRowid, photos, recorded_by);
   res.status(201).json(db.prepare(`SELECT * FROM baby_cares WHERE id = ?`).get(r.lastInsertRowid));
+});
+
+// ---------- 需求识别观察 ----------
+const HOUR = 3600 * 1000;
+
+// 从护理记录计算推断所需的情境：距上次喂奶/换尿布时长、24 小时排便次数
+function buildObservationContext(babyId, obsTimeIso) {
+  const t = new Date(obsTimeIso).getTime();
+  const lastFeed = db
+    .prepare(`SELECT time FROM baby_feeds WHERE baby_id = ? AND time <= ? ORDER BY time DESC LIMIT 1`)
+    .get(babyId, obsTimeIso);
+  const lastDiaper = db
+    .prepare(`SELECT time FROM baby_diapers WHERE baby_id = ? AND time <= ? ORDER BY time DESC LIMIT 1`)
+    .get(babyId, obsTimeIso);
+  const stools = db
+    .prepare(`SELECT COUNT(*) AS c FROM baby_diapers WHERE baby_id = ? AND time <= ? AND time >= ? AND type LIKE '%便%'`)
+    .get(babyId, obsTimeIso, new Date(t - 24 * HOUR).toISOString());
+  return {
+    hours_since_feed: lastFeed ? (t - new Date(lastFeed.time).getTime()) / HOUR : null,
+    hours_since_diaper: lastDiaper ? (t - new Date(lastDiaper.time).getTime()) / HOUR : null,
+    stool_count_24h: stools.c,
+  };
+}
+
+app.post('/api/babies/:id/observations', (req, res) => {
+  if (!babyExists(req.params.id)) return res.status(404).json({ error: '未找到宝宝' });
+  const { time, notes, recorded_by, photos } = req.body;
+  const obs = sanitizeObservation(req.body);
+  if (!obs.cry_type && !obs.signals.length && obs.temperature_c == null
+    && obs.ambient_temp_c == null && obs.ambient_humidity_pct == null) {
+    return res.status(400).json({ error: '请至少录入一项观察信号' });
+  }
+  const obsTime = time || nowIso();
+  const analysis = analyzeNeeds(obs, buildObservationContext(req.params.id, obsTime));
+  const r = db.prepare(`
+    INSERT INTO baby_observations (baby_id, time, cry_type, signals, temperature_c, ambient_temp_c, ambient_humidity_pct, result, notes, recorded_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(req.params.id, obsTime, obs.cry_type, JSON.stringify(obs.signals), obs.temperature_c,
+      obs.ambient_temp_c, obs.ambient_humidity_pct, JSON.stringify(analysis), notes ?? null, recorded_by ?? null);
+  savePhotos('observations', r.lastInsertRowid, photos, recorded_by);
+  res.status(201).json(db.prepare(`SELECT * FROM baby_observations WHERE id = ?`).get(r.lastInsertRowid));
 });
 
 // ---------- 护理任务 ----------

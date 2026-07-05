@@ -679,6 +679,154 @@ td.wrap {
   border-radius: 10px;
 }
 
+/* ---------- 需求识别 ---------- */
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sig-chip {
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--ink);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.sig-chip.active {
+  background: var(--brand-soft);
+  border-color: var(--brand);
+  color: var(--brand);
+  font-weight: 600;
+}
+
+.badge-conf-high {
+  background: var(--brand-soft);
+  color: var(--brand);
+  margin-left: 6px;
+}
+
+.badge-conf-medium {
+  background: var(--warning-soft);
+  color: var(--warning);
+  margin-left: 6px;
+}
+
+.badge-conf-low {
+  background: var(--bg);
+  color: var(--muted);
+  margin-left: 6px;
+}
+
+.needs-result {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.needs-flag {
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.needs-flag.danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.needs-flag.warning {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.need-row {
+  border-bottom: 1px dashed var(--line);
+  padding-bottom: 10px;
+}
+
+.need-row:last-of-type {
+  border-bottom: none;
+}
+
+.need-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.need-name {
+  font-weight: 600;
+}
+
+.need-score {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.need-bar {
+  height: 8px;
+  background: var(--bg);
+  border-radius: 999px;
+  margin: 4px 0 6px;
+  overflow: hidden;
+}
+
+.need-bar div {
+  height: 100%;
+  background: var(--brand);
+  border-radius: 999px;
+}
+
+.need-advice {
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--pink-soft);
+  border-radius: 8px;
+  padding: 6px 10px;
+  margin-bottom: 6px;
+}
+
+.need-evidence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.evidence-chip {
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--bg);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+.needs-ctx {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.needs-disclaimer {
+  color: var(--muted);
+  font-size: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.link-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--brand);
+  cursor: pointer;
+  font-size: inherit;
+  text-decoration: underline;
+}
+
 @media (max-width: 640px) {
   .page {
     padding: 12px;

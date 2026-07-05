@@ -4,17 +4,19 @@ import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ReferenceLine,
   ResponsiveContainer, CartesianGrid,
 } from 'recharts';
-import { api, fmtTime, dayOfLife, localDatetimeValue, BabyDetailData, PhotoRef } from '../api';
+import { api, fmtTime, dayOfLife, localDatetimeValue, BabyDetailData, PhotoRef, NeedsAnalysis, parseObservation } from '../api';
 import { useStaff } from '../StaffContext';
 import { useI18n } from '../i18n';
 import Modal from '../components/Modal';
 import PhotoInput, { PhotoDraft } from '../components/PhotoInput';
 import { PhotoBadge } from '../components/PhotoViewer';
+import ObservationModal, { NeedsResultView } from '../components/ObservationModal';
 
-type Tab = 'feeds' | 'diapers' | 'vitals' | 'cares';
+type Tab = 'feeds' | 'diapers' | 'vitals' | 'cares' | 'observations';
+type RecordTab = Exclude<Tab, 'observations'>;
 type ModalKind = Tab | null;
 
-const TAB_KEYS: Tab[] = ['feeds', 'diapers', 'vitals', 'cares'];
+const TAB_KEYS: Tab[] = ['feeds', 'diapers', 'vitals', 'cares', 'observations'];
 
 export default function BabyDetail() {
   const { id } = useParams();
@@ -23,6 +25,7 @@ export default function BabyDetail() {
   const [data, setData] = useState<BabyDetailData | null>(null);
   const [tab, setTab] = useState<Tab>('feeds');
   const [modal, setModal] = useState<ModalKind>(null);
+  const [viewResult, setViewResult] = useState<NeedsAnalysis | null>(null);
   const [error, setError] = useState('');
 
   const load = useCallback(
@@ -265,10 +268,62 @@ export default function BabyDetail() {
               </tbody>
             </table>
           )}
+          {tab === 'observations' && (
+            <table>
+              <thead>
+                <tr>
+                  <th>{t('common.time')}</th><th>{t('obs.cryCol')}</th><th>{t('obs.signalsCol')}</th>
+                  <th>{t('obs.resultCol')}</th><th>{t('common.notes')}</th><th>{t('common.recordedBy')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.observations.map((o) => {
+                  const { signals, result } = parseObservation(o);
+                  const top = result?.needs[0];
+                  return (
+                    <tr key={o.id}>
+                      <td>{fmtTime(o.time)}</td>
+                      <td>{o.cry_type ? t(`obs.cry.${o.cry_type}`) : '—'}</td>
+                      <td className="wrap">
+                        {signals.length
+                          ? signals.slice(0, 3).map((s) => t(`obs.sig.${s}`)).join('、') +
+                            (signals.length > 3 ? ` +${signals.length - 3}` : '')
+                          : '—'}
+                      </td>
+                      <td>
+                        {top ? (
+                          <button className="link-btn" onClick={() => result && setViewResult(result)}>
+                            {t(`obs.need.${top.code}`)}
+                            <span className={`badge badge-conf-${top.confidence}`}>{t(`obs.confidence.${top.confidence}`)}</span>
+                          </button>
+                        ) : (
+                          t('obs.noConclusion')
+                        )}
+                      </td>
+                      <td className="wrap">{o.notes || '—'} <PhotoBadge refs={refsFor('observations', o.id)} /></td>
+                      <td>{o.recorded_by || '—'}</td>
+                    </tr>
+                  );
+                })}
+                {data.observations.length === 0 && <tr><td colSpan={6} className="empty">{t('obs.empty')}</td></tr>}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
 
-      {modal && (
+      {modal === 'observations' && (
+        <ObservationModal
+          babyId={data.id}
+          recordedBy={current}
+          onClose={() => setModal(null)}
+          onSaved={() => {
+            setModal(null);
+            load();
+          }}
+        />
+      )}
+      {modal && modal !== 'observations' && (
         <RecordModal
           kind={modal}
           babyId={data.id}
@@ -280,6 +335,14 @@ export default function BabyDetail() {
           }}
         />
       )}
+      {viewResult && (
+        <Modal title={t('obs.resultTitle')} onClose={() => setViewResult(null)}>
+          <NeedsResultView analysis={viewResult} />
+          <div className="actions">
+            <button type="button" className="btn btn-primary" onClick={() => setViewResult(null)}>{t('obs.done')}</button>
+          </div>
+        </Modal>
+      )}
     </>
   );
 }
@@ -287,7 +350,7 @@ export default function BabyDetail() {
 function RecordModal({
   kind, babyId, recordedBy, onClose, onSaved,
 }: {
-  kind: Tab;
+  kind: RecordTab;
   babyId: number;
   recordedBy: string;
   onClose: () => void;
@@ -321,7 +384,7 @@ function RecordModal({
     }
   };
 
-  const titles: Record<Tab, string> = {
+  const titles: Record<RecordTab, string> = {
     feeds: t('modal.addFeed'),
     diapers: t('modal.addDiaper'),
     vitals: t('modal.addVitals'),

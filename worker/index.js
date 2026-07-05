@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { computeAlerts } from './alerts.js';
+import { analyzeNeeds, sanitizeObservation } from '../shared/needs-engine.js';
 
 // Cloudflare Workers + D1 版 API（与 server/src/index.js 的 Express 版行为一致）
 const app = new Hono();
@@ -223,11 +224,12 @@ app.get('/api/babies/:id', async (c) => {
     `SELECT b.*, m.name AS mother_name, m.room FROM babies b JOIN mothers m ON m.id = b.mother_id WHERE b.id = ?`
   ).bind(id).first();
   if (!b) return err(c, 404, '未找到宝宝');
-  const [feeds, diapers, vitals, cares, tasks] = await c.env.DB.batch([
+  const [feeds, diapers, vitals, cares, observations, tasks] = await c.env.DB.batch([
     c.env.DB.prepare(`SELECT * FROM baby_feeds WHERE baby_id = ? ORDER BY time DESC LIMIT 300`).bind(b.id),
     c.env.DB.prepare(`SELECT * FROM baby_diapers WHERE baby_id = ? ORDER BY time DESC LIMIT 300`).bind(b.id),
     c.env.DB.prepare(`SELECT * FROM baby_vitals WHERE baby_id = ? ORDER BY time DESC LIMIT 300`).bind(b.id),
     c.env.DB.prepare(`SELECT * FROM baby_cares WHERE baby_id = ? ORDER BY time DESC LIMIT 300`).bind(b.id),
+    c.env.DB.prepare(`SELECT * FROM baby_observations WHERE baby_id = ? ORDER BY time DESC LIMIT 100`).bind(b.id),
     c.env.DB.prepare(`SELECT * FROM care_tasks WHERE subject_type = 'baby' AND subject_id = ? ORDER BY due_time DESC LIMIT 50`).bind(b.id),
   ]);
   const photos = [
@@ -235,11 +237,12 @@ app.get('/api/babies/:id', async (c) => {
     ...(await photoRefs(c.env.DB, 'diapers', `SELECT id FROM baby_diapers WHERE baby_id = ?`, b.id)),
     ...(await photoRefs(c.env.DB, 'vitals', `SELECT id FROM baby_vitals WHERE baby_id = ?`, b.id)),
     ...(await photoRefs(c.env.DB, 'cares', `SELECT id FROM baby_cares WHERE baby_id = ?`, b.id)),
+    ...(await photoRefs(c.env.DB, 'observations', `SELECT id FROM baby_observations WHERE baby_id = ?`, b.id)),
   ];
   return c.json({
     ...b,
     feeds: feeds.results, diapers: diapers.results, vitals: vitals.results,
-    cares: cares.results, tasks: tasks.results, photos,
+    cares: cares.results, observations: observations.results, tasks: tasks.results, photos,
   });
 });
 
@@ -303,6 +306,50 @@ app.post('/api/babies/:id/cares', async (c) => {
     .run();
   await savePhotos(c.env.DB, 'cares', r.meta.last_row_id, b.photos, b.recorded_by);
   const row = await c.env.DB.prepare(`SELECT * FROM baby_cares WHERE id = ?`).bind(r.meta.last_row_id).first();
+  return c.json(row, 201);
+});
+
+// ---------- 需求识别观察 ----------
+const HOUR = 3600 * 1000;
+
+// 从护理记录计算推断所需的情境：距上次喂奶/换尿布时长、24 小时排便次数
+async function buildObservationContext(db, babyId, obsTimeIso) {
+  const t = new Date(obsTimeIso).getTime();
+  const [lastFeed, lastDiaper, stools] = await db.batch([
+    db.prepare(`SELECT time FROM baby_feeds WHERE baby_id = ? AND time <= ? ORDER BY time DESC LIMIT 1`).bind(babyId, obsTimeIso),
+    db.prepare(`SELECT time FROM baby_diapers WHERE baby_id = ? AND time <= ? ORDER BY time DESC LIMIT 1`).bind(babyId, obsTimeIso),
+    db.prepare(`SELECT COUNT(*) AS c FROM baby_diapers WHERE baby_id = ? AND time <= ? AND time >= ? AND type LIKE '%便%'`)
+      .bind(babyId, obsTimeIso, new Date(t - 24 * HOUR).toISOString()),
+  ]);
+  const feed = lastFeed.results[0];
+  const diaper = lastDiaper.results[0];
+  return {
+    hours_since_feed: feed ? (t - new Date(feed.time).getTime()) / HOUR : null,
+    hours_since_diaper: diaper ? (t - new Date(diaper.time).getTime()) / HOUR : null,
+    stool_count_24h: stools.results[0].c,
+  };
+}
+
+app.post('/api/babies/:id/observations', async (c) => {
+  const id = c.req.param('id');
+  if (!(await babyExists(c.env.DB, id))) return err(c, 404, '未找到宝宝');
+  const b = await c.req.json();
+  const obs = sanitizeObservation(b);
+  if (!obs.cry_type && !obs.signals.length && obs.temperature_c == null
+    && obs.ambient_temp_c == null && obs.ambient_humidity_pct == null) {
+    return err(c, 400, '请至少录入一项观察信号');
+  }
+  const obsTime = b.time || nowIso();
+  const analysis = analyzeNeeds(obs, await buildObservationContext(c.env.DB, id, obsTime));
+  const r = await c.env.DB.prepare(
+    `INSERT INTO baby_observations (baby_id, time, cry_type, signals, temperature_c, ambient_temp_c, ambient_humidity_pct, result, notes, recorded_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  )
+    .bind(id, obsTime, obs.cry_type, JSON.stringify(obs.signals), obs.temperature_c,
+      obs.ambient_temp_c, obs.ambient_humidity_pct, JSON.stringify(analysis), b.notes ?? null, b.recorded_by ?? null)
+    .run();
+  await savePhotos(c.env.DB, 'observations', r.meta.last_row_id, b.photos, b.recorded_by);
+  const row = await c.env.DB.prepare(`SELECT * FROM baby_observations WHERE id = ?`).bind(r.meta.last_row_id).first();
   return c.json(row, 201);
 });
 

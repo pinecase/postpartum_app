@@ -97,6 +97,22 @@ CREATE TABLE IF NOT EXISTS mother_vitals (
   recorded_by TEXT
 );
 
+-- 需求识别观察：护理人员录入哭声/表情/动作/身体征象与环境温湿度，
+-- 服务端结合喂养、大小便等记录推断宝宝需求，result 保存推断结果快照（JSON）
+CREATE TABLE IF NOT EXISTS baby_observations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  baby_id INTEGER NOT NULL REFERENCES babies(id),
+  time TEXT NOT NULL,
+  cry_type TEXT,               -- 哭声特征 code（见 shared/needs-engine.js CRY_TYPES）
+  signals TEXT,                -- JSON 数组：表情/动作/身体征象 code
+  temperature_c REAL,
+  ambient_temp_c REAL,
+  ambient_humidity_pct REAL,
+  result TEXT,                 -- JSON：推断结果 { needs, flags, context }
+  notes TEXT,
+  recorded_by TEXT
+);
+
 CREATE TABLE IF NOT EXISTS care_tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   subject_type TEXT NOT NULL CHECK (subject_type IN ('mother','baby')),
@@ -130,6 +146,8 @@ CREATE TABLE IF NOT EXISTS photos (
 );
 
 CREATE INDEX IF NOT EXISTS idx_photos_record ON photos(record_type, record_id);
+
+CREATE INDEX IF NOT EXISTS idx_obs_baby_time ON baby_observations(baby_id, time);
 
 CREATE INDEX IF NOT EXISTS idx_feeds_baby_time ON baby_feeds(baby_id, time);
 CREATE INDEX IF NOT EXISTS idx_diapers_baby_time ON baby_diapers(baby_id, time);
