@@ -1,9 +1,10 @@
 export type Lang = 'zh' | 'en' | 'ms';
 
+// 语言切换器展示的选项。马来语（ms）字典仍保留在本文件中，
+// 需要恢复时把 { code: 'ms', label: 'B. Melayu' } 加回此数组即可。
 export const LANGS: { code: Lang; label: string }[] = [
   { code: 'zh', label: '中文' },
   { code: 'en', label: 'English' },
-  { code: 'ms', label: 'B. Melayu' },
 ];
 
 // 界面文案字典。zh 为基准；en / ms 缺失键时回退 zh。

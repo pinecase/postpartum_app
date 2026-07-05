@@ -19,10 +19,10 @@ const Ctx = createContext<I18nCtx>({
 
 function detectLang(): Lang {
   const saved = localStorage.getItem('lang');
-  if (saved === 'zh' || saved === 'en' || saved === 'ms') return saved;
+  // 曾选过已下架语言（如 ms）的用户自动回退到浏览器语言
+  if (saved === 'zh' || saved === 'en') return saved;
   const nav = navigator.language.toLowerCase();
   if (nav.startsWith('zh')) return 'zh';
-  if (nav.startsWith('ms')) return 'ms';
   return 'en';
 }
 
