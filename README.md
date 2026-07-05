@@ -17,8 +17,10 @@
 
 ## 技术栈
 
-- 后端：Node.js + Express + SQLite（better-sqlite3）
+- 后端（本地开发）：Node.js + Express + SQLite（better-sqlite3）
+- 后端（Cloudflare 部署）：Cloudflare Workers + Hono + D1，与 Express 版行为一致
 - 前端：React 18 + TypeScript + Vite + React Router + Recharts
+- 表结构共用 `db/schema.sql`，演示数据共用 `db/seed-statements.mjs`
 
 ## 快速开始
 
@@ -36,6 +38,45 @@ npm run dev          # 同时启动 server(3000) 与 client(5173)
 ```
 
 数据库文件默认在 `server/data/care.db`（可用环境变量 `DB_PATH` 覆盖）；重建演示数据：`FORCE_SEED=1 npm run seed`。
+
+## 部署到 Cloudflare（Workers + D1）
+
+免费套餐即可：Workers 每天 10 万请求，D1 5GB 存储。
+
+```bash
+# 1. 登录 Cloudflare（会打开浏览器授权）
+npx wrangler login
+
+# 2. 创建 D1 数据库，把输出的 database_id 填进 wrangler.jsonc
+npx wrangler d1 create postpartum-care
+
+# 3. 初始化表结构
+npm run cf:db:schema
+
+# 4.（可选）导入演示数据
+npm run cf:db:seed
+
+# 5. 构建并部署，完成后输出 https://postpartum-care.<你的子域>.workers.dev
+npm run cf:deploy
+```
+
+本地模拟 Cloudflare 环境调试：
+
+```bash
+npx wrangler d1 execute postpartum-care --local --file=./db/schema.sql
+npx wrangler d1 execute postpartum-care --local --file=./db/seed.sql   # 可选
+npm run build && npm run cf:dev    # http://localhost:8787
+```
+
+### ⚠️ 访问控制（部署到公网前必读）
+
+应用本身没有登录功能，直接公网可访问意味着任何人都能查看母婴健康数据。强烈建议用 **Cloudflare Access**（Zero Trust，50 用户内免费）加一层邮箱验证：
+
+1. Cloudflare 控制台 → Zero Trust → Access → Applications → Add an application → Self-hosted
+2. 域名填你的 `*.workers.dev` 地址（或自定义域名）
+3. 策略里只允许医护人员的邮箱地址（或邮箱后缀）登录
+
+配置后员工首次访问会收到邮箱验证码，通过后才能进入系统，无需修改任何代码。
 
 ## 说明
 

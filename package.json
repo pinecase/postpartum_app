@@ -8,13 +8,22 @@
     "dev": "concurrently -n server,client \"npm run dev -w server\" \"npm run dev -w client\"",
     "build": "npm run build -w client",
     "start": "npm run start -w server",
-    "seed": "npm run seed -w server"
+    "seed": "npm run seed -w server",
+    "seed:sql": "node scripts/gen-seed-sql.mjs",
+    "cf:dev": "wrangler dev",
+    "cf:deploy": "npm run build && wrangler deploy",
+    "cf:db:schema": "wrangler d1 execute postpartum-care --remote --file=./db/schema.sql",
+    "cf:db:seed": "npm run seed:sql && wrangler d1 execute postpartum-care --remote --file=./db/seed.sql"
   },
   "workspaces": [
     "server",
     "client"
   ],
+  "dependencies": {
+    "hono": "^4.6.14"
+  },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "concurrently": "^9.1.2",
+    "wrangler": "^4.0.0"
   }
 }

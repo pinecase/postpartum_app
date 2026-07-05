@@ -1,0 +1,24 @@
+{
+  // Cloudflare Workers 部署配置
+  // 部署前：把 d1_databases[0].database_id 替换为
+  //   npx wrangler d1 create postpartum-care 输出的 database_id
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "postpartum-care",
+  "main": "worker/index.js",
+  "compatibility_date": "2025-06-01",
+  "assets": {
+    "directory": "./client/dist",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "postpartum-care",
+      "database_id": "REPLACE_WITH_YOUR_DATABASE_ID"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}
