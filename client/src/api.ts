@@ -125,6 +125,8 @@ export interface Alert {
   subject_name: string;
   room: string;
   level: 'danger' | 'warning' | 'info';
+  code: string;
+  params: Record<string, string | number>;
   message: string;
   time: string | null;
 }

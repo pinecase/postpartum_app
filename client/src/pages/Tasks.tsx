@@ -2,12 +2,17 @@ import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, fmtTime, localDatetimeValue, CareTask, Mother, Baby } from '../api';
 import { useStaff } from '../StaffContext';
+import { useI18n } from '../i18n';
 import Modal from '../components/Modal';
+
+const FILTERS = ['待办', '已完成', '全部'] as const;
+type Filter = (typeof FILTERS)[number];
 
 export default function Tasks() {
   const { current } = useStaff();
+  const { t, tv } = useI18n();
   const [tasks, setTasks] = useState<CareTask[]>([]);
-  const [filter, setFilter] = useState<'待办' | '已完成' | '全部'>('待办');
+  const [filter, setFilter] = useState<Filter>('待办');
   const [showForm, setShowForm] = useState(false);
 
   const load = useCallback(() => {
@@ -19,19 +24,25 @@ export default function Tasks() {
     load();
   }, [load]);
 
-  const complete = async (t: CareTask) => {
-    await api.patch(`/api/tasks/${t.id}`, { status: '已完成', completed_by: current });
+  const complete = async (tk: CareTask) => {
+    await api.patch(`/api/tasks/${tk.id}`, { status: '已完成', completed_by: current });
     load();
+  };
+
+  const filterLabel: Record<Filter, string> = {
+    '待办': t('tasks.pending'),
+    '已完成': t('tasks.done'),
+    '全部': t('tasks.all'),
   };
 
   return (
     <>
-      <div className="page-title">📋 护理任务</div>
+      <div className="page-title">{t('tasks.title')}</div>
       <div className="card">
         <div className="tabs">
-          {(['待办', '已完成', '全部'] as const).map((f) => (
+          {FILTERS.map((f) => (
             <button key={f} className={filter === f ? 'active' : ''} onClick={() => setFilter(f)}>
-              {f}
+              {filterLabel[f]}
             </button>
           ))}
           <button
@@ -39,34 +50,34 @@ export default function Tasks() {
             style={{ marginLeft: 'auto', background: 'var(--pink)', borderColor: 'var(--pink)' }}
             onClick={() => setShowForm(true)}
           >
-            ＋ 新建任务
+            {t('tasks.new')}
           </button>
         </div>
 
-        {tasks.map((t) => (
-          <div className="task-item" key={t.id}>
-            <span className={`badge ${t.status === '已完成' ? 'badge-done' : 'badge-warning'}`}>
-              {t.status === '已完成' ? '已完成' : fmtTime(t.due_time)}
+        {tasks.map((tk) => (
+          <div className="task-item" key={tk.id}>
+            <span className={`badge ${tk.status === '已完成' ? 'badge-done' : 'badge-warning'}`}>
+              {tk.status === '已完成' ? t('tasks.done') : fmtTime(tk.due_time)}
             </span>
-            <span className="badge badge-room">{t.room}</span>
-            <Link to={t.subject_type === 'baby' ? `/babies/${t.subject_id}` : `/mothers/${t.subject_id}`}>
-              <span className={`badge ${t.subject_type === 'baby' ? 'badge-baby' : 'badge-mother'}`}>
-                {t.subject_name}
+            <span className="badge badge-room">{tk.room}</span>
+            <Link to={tk.subject_type === 'baby' ? `/babies/${tk.subject_id}` : `/mothers/${tk.subject_id}`}>
+              <span className={`badge ${tk.subject_type === 'baby' ? 'badge-baby' : 'badge-mother'}`}>
+                {tk.subject_name}
               </span>
             </Link>
-            <span className="title">{t.title}</span>
-            {t.detail && <span className="meta">{t.detail}</span>}
+            <span className="title">{tk.title}</span>
+            {tk.detail && <span className="meta">{tk.detail}</span>}
             <span className="spacer" />
-            {t.status === '已完成' ? (
+            {tk.status === '已完成' ? (
               <span className="meta">
-                {t.completed_by} · {fmtTime(t.completed_at)}
+                {tk.completed_by} · {fmtTime(tk.completed_at)}
               </span>
             ) : (
-              <button className="btn btn-sm" onClick={() => complete(t)}>✓ 完成</button>
+              <button className="btn btn-sm" onClick={() => complete(tk)}>{t('tasks.complete')}</button>
             )}
           </div>
         ))}
-        {tasks.length === 0 && <div className="empty">暂无任务</div>}
+        {tasks.length === 0 && <div className="empty">{t('tasks.empty')}</div>}
       </div>
 
       {showForm && (
@@ -90,6 +101,7 @@ function TaskModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { t } = useI18n();
   const [mothers, setMothers] = useState<Mother[]>([]);
   const [babies, setBabies] = useState<(Baby & { mother_name?: string })[]>([]);
   const [subjectType, setSubjectType] = useState<'mother' | 'baby'>('baby');
@@ -131,18 +143,18 @@ function TaskModal({
   };
 
   return (
-    <Modal title="新建护理任务" onClose={onClose}>
+    <Modal title={t('modal.newTask')} onClose={onClose}>
       <form onSubmit={submit}>
         <div className="form-grid">
           <div className="field">
-            <label>对象类型</label>
+            <label>{t('tasks.subjectType')}</label>
             <select value={subjectType} onChange={(e) => setSubjectType(e.target.value as 'mother' | 'baby')}>
-              <option value="baby">宝宝</option>
-              <option value="mother">产妇</option>
+              <option value="baby">{t('common.baby')}</option>
+              <option value="mother">{t('common.mother')}</option>
             </select>
           </div>
           <div className="field">
-            <label>对象 *</label>
+            <label>{t('tasks.subject')}</label>
             <select name="subject_id" required>
               {(subjectType === 'baby' ? babies : mothers).map((s) => (
                 <option key={s.id} value={s.id}>{s.name}</option>
@@ -150,16 +162,16 @@ function TaskModal({
             </select>
           </div>
           <div className="field">
-            <label>计划时间 *</label>
+            <label>{t('tasks.dueTime')}</label>
             <input type="datetime-local" name="due_time" defaultValue={localDatetimeValue()} required />
           </div>
-          <div className="field full"><label>任务标题 *</label><input name="title" required placeholder="如：复测黄疸" /></div>
-          <div className="field full"><label>说明</label><textarea name="detail" /></div>
+          <div className="field full"><label>{t('tasks.taskTitle')}</label><input name="title" required placeholder={t('tasks.titlePlaceholder')} /></div>
+          <div className="field full"><label>{t('tasks.detail')}</label><textarea name="detail" /></div>
         </div>
         {err && <div className="form-error">{err}</div>}
         <div className="actions">
-          <button type="button" className="btn" onClick={onClose}>取消</button>
-          <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? '保存中…' : '保存'}</button>
+          <button type="button" className="btn" onClick={onClose}>{t('common.cancel')}</button>
+          <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? t('common.saving') : t('common.save')}</button>
         </div>
       </form>
     </Modal>

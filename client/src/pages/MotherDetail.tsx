@@ -5,11 +5,13 @@ import {
 } from 'recharts';
 import { api, fmtTime, dayOfLife, localDatetimeValue, MotherDetailData } from '../api';
 import { useStaff } from '../StaffContext';
+import { useI18n } from '../i18n';
 import Modal from '../components/Modal';
 
 export default function MotherDetail() {
   const { id } = useParams();
   const { current } = useStaff();
+  const { t, tv } = useI18n();
   const [data, setData] = useState<MotherDetailData | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState('');
@@ -22,6 +24,10 @@ export default function MotherDetail() {
     load();
   }, [load]);
 
+  const seriesTemp = t('baby.series.temp');
+  const seriesSys = t('mother.series.sys');
+  const seriesDia = t('mother.series.dia');
+
   const chartData = useMemo(() => {
     if (!data) return [];
     return [...data.vitals]
@@ -29,42 +35,43 @@ export default function MotherDetail() {
       .filter((v) => v.temperature_c != null || v.systolic != null)
       .map((v) => ({
         t: fmtTime(v.time),
-        体温: v.temperature_c,
-        收缩压: v.systolic,
-        舒张压: v.diastolic,
+        [seriesTemp]: v.temperature_c,
+        [seriesSys]: v.systolic,
+        [seriesDia]: v.diastolic,
       }));
-  }, [data]);
+  }, [data, seriesTemp, seriesSys, seriesDia]);
 
   const discharge = async () => {
     if (!data) return;
-    if (!window.confirm(`确认为 ${data.name} 办理离所？宝宝将一并标记为已离所。`)) return;
+    if (!window.confirm(t('mother.confirmDischarge', { name: data.name }))) return;
     await api.patch(`/api/mothers/${data.id}`, { status: '已离所' });
     load();
   };
 
-  if (error) return <div className="card">加载失败：{error}</div>;
-  if (!data) return <div className="empty">加载中…</div>;
+  if (error) return <div className="card">{t('common.loadFailed')}：{error}</div>;
+  if (!data) return <div className="empty">{t('common.loading')}</div>;
 
   return (
     <>
       <div className="page-title">
         🤱 {data.name}
-        <span className="badge badge-room">{data.room} 房</span>
-        {data.status === '已离所' && <span className="badge badge-done">已离所</span>}
+        <span className="badge badge-room">{data.room} {t('overview.roomSuffix')}</span>
+        {data.status === '已离所' && <span className="badge badge-done">{t('mother.discharged')}</span>}
         <span className="sub">
-          {data.delivery_type} · 产后第 {dayOfLife(data.delivery_date)} 天 · 入住 {data.admission_date}
+          {tv(data.delivery_type)} · {t('mother.postpartum', { n: dayOfLife(data.delivery_date) })} ·{' '}
+          {t('mother.admittedOn', { d: data.admission_date })}
         </span>
       </div>
 
       <div className="card">
         <div className="info-list">
-          <div><div className="k">年龄</div>{data.age ?? '—'}</div>
-          <div><div className="k">孕产史</div>{data.parity || '—'}</div>
-          <div><div className="k">喂养计划</div>{data.feeding_plan || '—'}</div>
-          <div><div className="k">过敏史</div>{data.allergies || '无'}</div>
-          <div><div className="k">预计离所</div>{data.expected_discharge_date || '—'}</div>
+          <div><div className="k">{t('mother.age')}</div>{data.age ?? '—'}</div>
+          <div><div className="k">{t('mother.parity')}</div>{data.parity || '—'}</div>
+          <div><div className="k">{t('mother.feedingPlan')}</div>{tv(data.feeding_plan)}</div>
+          <div><div className="k">{t('mother.allergies')}</div>{data.allergies && data.allergies !== '无' ? data.allergies : t('mother.noAllergy')}</div>
+          <div><div className="k">{t('mother.expectedDischarge')}</div>{data.expected_discharge_date || '—'}</div>
           <div>
-            <div className="k">宝宝</div>
+            <div className="k">{t('mother.babies')}</div>
             {data.babies.map((b, i) => (
               <span key={b.id}>
                 {i > 0 && '、'}
@@ -73,12 +80,12 @@ export default function MotherDetail() {
             ))}
             {data.babies.length === 0 && '—'}
           </div>
-          {data.notes && <div><div className="k">备注</div>{data.notes}</div>}
+          {data.notes && <div><div className="k">{t('common.notes')}</div>{data.notes}</div>}
         </div>
         {data.status === '在住' && (
           <div className="btn-row" style={{ marginTop: 12 }}>
-            <button className="btn btn-primary" onClick={() => setShowForm(true)}>＋ 添加查房记录</button>
-            <button className="btn" onClick={discharge}>办理离所</button>
+            <button className="btn btn-primary" onClick={() => setShowForm(true)}>{t('mother.addRound')}</button>
+            <button className="btn" onClick={discharge}>{t('mother.discharge')}</button>
           </div>
         )}
       </div>
@@ -86,20 +93,20 @@ export default function MotherDetail() {
       {chartData.length > 1 && (
         <div className="chart-grid" style={{ marginBottom: 14 }}>
           <div className="chart-box">
-            <h4>体温趋势（°C）</h4>
+            <h4>{t('mother.chart.temp')}</h4>
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
                 <XAxis dataKey="t" fontSize={11} />
                 <YAxis domain={[35.5, 39]} fontSize={11} width={40} />
                 <Tooltip />
-                <ReferenceLine y={38} stroke="#b91c1c" strokeDasharray="4 4" label={{ value: '发热 38', fontSize: 11 }} />
-                <Line type="monotone" dataKey="体温" stroke="#be185d" strokeWidth={2} dot={{ r: 3 }} connectNulls />
+                <ReferenceLine y={38} stroke="#b91c1c" strokeDasharray="4 4" label={{ value: t('baby.chart.fever38'), fontSize: 11 }} />
+                <Line type="monotone" dataKey={seriesTemp} stroke="#be185d" strokeWidth={2} dot={{ r: 3 }} connectNulls />
               </LineChart>
             </ResponsiveContainer>
           </div>
           <div className="chart-box">
-            <h4>血压趋势（mmHg）</h4>
+            <h4>{t('mother.chart.bp')}</h4>
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
@@ -108,8 +115,8 @@ export default function MotherDetail() {
                 <Tooltip />
                 <Legend />
                 <ReferenceLine y={140} stroke="#b91c1c" strokeDasharray="4 4" />
-                <Line type="monotone" dataKey="收缩压" stroke="#0f766e" strokeWidth={2} dot={{ r: 3 }} connectNulls />
-                <Line type="monotone" dataKey="舒张压" stroke="#1d4ed8" strokeWidth={2} dot={{ r: 3 }} connectNulls />
+                <Line type="monotone" dataKey={seriesSys} stroke="#0f766e" strokeWidth={2} dot={{ r: 3 }} connectNulls />
+                <Line type="monotone" dataKey={seriesDia} stroke="#1d4ed8" strokeWidth={2} dot={{ r: 3 }} connectNulls />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -117,13 +124,15 @@ export default function MotherDetail() {
       )}
 
       <div className="card">
-        <h3>查房记录</h3>
+        <h3>{t('mother.rounds')}</h3>
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>时间</th><th>体温</th><th>血压</th><th>脉搏</th><th>恶露</th>
-                <th>伤口</th><th>乳房</th><th>情绪</th><th>疼痛</th><th>备注</th><th>记录人</th>
+                <th>{t('common.time')}</th><th>{t('vitals.temp')}</th><th>{t('mother.bp')}</th>
+                <th>{t('mother.pulse')}</th><th>{t('mother.lochia')}</th><th>{t('mother.wound')}</th>
+                <th>{t('mother.breast')}</th><th>{t('mother.mood')}</th><th>{t('mother.pain')}</th>
+                <th>{t('common.notes')}</th><th>{t('common.recordedBy')}</th>
               </tr>
             </thead>
             <tbody>
@@ -133,7 +142,7 @@ export default function MotherDetail() {
                   <td>{v.temperature_c != null ? `${v.temperature_c}°C` : '—'}</td>
                   <td>{v.systolic != null ? `${v.systolic}/${v.diastolic}` : '—'}</td>
                   <td>{v.pulse ?? '—'}</td>
-                  <td>{v.lochia_amount ? `${v.lochia_amount} · ${v.lochia_color || ''}` : '—'}</td>
+                  <td>{v.lochia_amount ? `${tv(v.lochia_amount)} · ${tv(v.lochia_color)}` : '—'}</td>
                   <td className="wrap">{v.wound_status || '—'}</td>
                   <td className="wrap">{v.breast_status || '—'}</td>
                   <td>{v.mood_score != null ? `${v.mood_score}/5` : '—'}</td>
@@ -142,7 +151,7 @@ export default function MotherDetail() {
                   <td>{v.recorded_by || '—'}</td>
                 </tr>
               ))}
-              {data.vitals.length === 0 && <tr><td colSpan={11} className="empty">暂无记录</td></tr>}
+              {data.vitals.length === 0 && <tr><td colSpan={11} className="empty">{t('common.none')}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -171,6 +180,7 @@ function VitalModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { t, tv } = useI18n();
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -196,52 +206,56 @@ function VitalModal({
     }
   };
 
+  const opt = (v: string) => <option key={v} value={v}>{tv(v)}</option>;
+
   return (
-    <Modal title="添加产妇查房记录" onClose={onClose}>
+    <Modal title={t('modal.addMotherVitals')} onClose={onClose}>
       <form onSubmit={submit}>
         <div className="form-grid">
           <div className="field">
-            <label>时间</label>
+            <label>{t('common.time')}</label>
             <input type="datetime-local" name="time" defaultValue={localDatetimeValue()} required />
           </div>
-          <div className="field"><label>体温（°C）</label><input type="number" name="temperature_c" step="0.1" min={34} max={43} /></div>
-          <div className="field"><label>收缩压</label><input type="number" name="systolic" min={0} /></div>
-          <div className="field"><label>舒张压</label><input type="number" name="diastolic" min={0} /></div>
-          <div className="field"><label>脉搏（次/分）</label><input type="number" name="pulse" min={0} /></div>
+          <div className="field"><label>{t('vitals.tempC')}</label><input type="number" name="temperature_c" step="0.1" min={34} max={43} /></div>
+          <div className="field"><label>{t('mother.sys')}</label><input type="number" name="systolic" min={0} /></div>
+          <div className="field"><label>{t('mother.dia')}</label><input type="number" name="diastolic" min={0} /></div>
+          <div className="field"><label>{t('mother.pulseUnit')}</label><input type="number" name="pulse" min={0} /></div>
           <div className="field">
-            <label>恶露量</label>
+            <label>{t('mother.lochiaAmount')}</label>
             <select name="lochia_amount" defaultValue="">
-              <option value="">—</option><option>少</option><option>中</option><option>多</option>
+              <option value="">—</option>
+              {['少', '中', '多'].map(opt)}
             </select>
           </div>
           <div className="field">
-            <label>恶露颜色</label>
+            <label>{t('mother.lochiaColor')}</label>
             <select name="lochia_color" defaultValue="">
-              <option value="">—</option><option>鲜红</option><option>暗红</option><option>淡红</option><option>白色</option>
+              <option value="">—</option>
+              {['鲜红', '暗红', '淡红', '白色'].map(opt)}
             </select>
           </div>
-          <div className="field"><label>伤口情况</label><input name="wound_status" placeholder="如：切口干燥无红肿" /></div>
-          <div className="field"><label>乳房情况</label><input name="breast_status" placeholder="如：轻度胀奶" /></div>
+          <div className="field"><label>{t('mother.woundStatus')}</label><input name="wound_status" placeholder={t('mother.woundPlaceholder')} /></div>
+          <div className="field"><label>{t('mother.breastStatus')}</label><input name="breast_status" placeholder={t('mother.breastPlaceholder')} /></div>
           <div className="field">
-            <label>情绪评分（1差—5好）</label>
+            <label>{t('mother.moodScore')}</label>
             <select name="mood_score" defaultValue="">
               <option value="">—</option>
               {[1, 2, 3, 4, 5].map((n) => <option key={n}>{n}</option>)}
             </select>
           </div>
           <div className="field">
-            <label>疼痛评分（0—10）</label>
+            <label>{t('mother.painScore')}</label>
             <select name="pain_score" defaultValue="">
               <option value="">—</option>
               {Array.from({ length: 11 }, (_, n) => <option key={n}>{n}</option>)}
             </select>
           </div>
-          <div className="field full"><label>备注</label><textarea name="notes" /></div>
+          <div className="field full"><label>{t('common.notes')}</label><textarea name="notes" /></div>
         </div>
         {err && <div className="form-error">{err}</div>}
         <div className="actions">
-          <button type="button" className="btn" onClick={onClose}>取消</button>
-          <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? '保存中…' : '保存'}</button>
+          <button type="button" className="btn" onClick={onClose}>{t('common.cancel')}</button>
+          <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? t('common.saving') : t('common.save')}</button>
         </div>
       </form>
     </Modal>

@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, fmtTime, dayOfLife, Overview } from '../api';
+import { useI18n } from '../i18n';
 
 export default function Dashboard() {
+  const { t, tv } = useI18n();
   const [data, setData] = useState<Overview | null>(null);
   const [error, setError] = useState('');
 
@@ -14,33 +16,33 @@ export default function Dashboard() {
     return () => clearInterval(timer);
   }, []);
 
-  if (error) return <div className="card">加载失败：{error}</div>;
-  if (!data) return <div className="empty">加载中…</div>;
+  if (error) return <div className="card">{t('common.loadFailed')}：{error}</div>;
+  if (!data) return <div className="empty">{t('common.loading')}</div>;
 
   return (
     <>
       <div className="grid grid-stats">
         <div className="stat">
           <div className="num">{data.stats.mothers_in_house}</div>
-          <div className="label">在住产妇</div>
+          <div className="label">{t('stats.mothersInHouse')}</div>
         </div>
         <div className="stat">
           <div className="num">{data.stats.babies_in_house}</div>
-          <div className="label">在住宝宝</div>
+          <div className="label">{t('stats.babiesInHouse')}</div>
         </div>
         <div className="stat">
           <div className="num">{data.alerts.filter((a) => a.level === 'danger').length}</div>
-          <div className="label">高危预警</div>
+          <div className="label">{t('stats.dangerAlerts')}</div>
         </div>
         <div className="stat">
           <div className="num">{data.stats.pending_task_count}</div>
-          <div className="label">待办任务</div>
+          <div className="label">{t('stats.pendingTasks')}</div>
         </div>
       </div>
 
       {data.alerts.length > 0 && (
         <div className="card">
-          <h3>⚠️ 异常预警</h3>
+          <h3>{t('overview.alerts')}</h3>
           {data.alerts.map((a, i) => (
             <Link
               key={i}
@@ -51,7 +53,7 @@ export default function Dashboard() {
                 <span className="who">
                   {a.subject_type === 'baby' ? '👶' : '🤱'} {a.subject_name}
                 </span>
-                <span>{a.message}</span>
+                <span>{a.code ? t(`alert.${a.code}`, a.params) : a.message}</span>
               </div>
             </Link>
           ))}
@@ -62,33 +64,36 @@ export default function Dashboard() {
         {data.rooms.map(({ mother, babies }) => (
           <div className="card room-card" key={mother.id}>
             <h3>
-              <span className="badge badge-room">{mother.room} 房</span>
+              <span className="badge badge-room">
+                {mother.room} {t('overview.roomSuffix')}
+              </span>
               <span className="meta">
-                入住 {mother.admission_date} · {mother.delivery_type}
+                {t('overview.admitted')} {mother.admission_date} · {tv(mother.delivery_type)}
               </span>
             </h3>
             <Link to={`/mothers/${mother.id}`}>
               <div className="mother-row">
-                <span className="badge badge-mother">产妇</span>
+                <span className="badge badge-mother">{t('common.mother')}</span>
                 <span className="name">{mother.name}</span>
                 <span className="meta">
-                  产后第 {dayOfLife(mother.delivery_date)} 天
+                  {t('overview.postpartumDay', { n: dayOfLife(mother.delivery_date) })}
                   {mother.latest_vital?.temperature_c != null &&
-                    ` · 体温 ${mother.latest_vital.temperature_c}°C`}
+                    ` · ${t('overview.temp')} ${mother.latest_vital.temperature_c}°C`}
                   {mother.latest_vital?.systolic != null &&
-                    ` · 血压 ${mother.latest_vital.systolic}/${mother.latest_vital.diastolic}`}
+                    ` · ${t('overview.bp')} ${mother.latest_vital.systolic}/${mother.latest_vital.diastolic}`}
                 </span>
               </div>
             </Link>
             {babies.map((b) => (
               <Link to={`/babies/${b.id}`} key={b.id}>
                 <div className="baby-row">
-                  <span className="badge badge-baby">宝宝</span>
+                  <span className="badge badge-baby">{t('common.baby')}</span>
                   <span className="name">{b.name}</span>
                   <span className="meta">
-                    第 {dayOfLife(b.birth_date)} 天 · 今日喂养 {b.feeds_today} 次 · 尿布{' '}
-                    {b.diapers_today} 次
-                    {b.last_feed && ` · 上次喂 ${fmtTime(b.last_feed.time)}`}
+                    {t('overview.lifeDay', { n: dayOfLife(b.birth_date) })} ·{' '}
+                    {t('overview.feedsToday', { n: b.feeds_today })} ·{' '}
+                    {t('overview.diapersToday', { n: b.diapers_today })}
+                    {b.last_feed && ` · ${t('overview.lastFeed', { t: fmtTime(b.last_feed.time) })}`}
                   </span>
                 </div>
               </Link>
@@ -97,7 +102,7 @@ export default function Dashboard() {
         ))}
         {data.rooms.length === 0 && (
           <div className="card empty">
-            暂无在住母婴，请前往 <Link to="/admission">入住管理</Link> 办理入住
+            <Link to="/admission">{t('overview.noResidents')}</Link>
           </div>
         )}
       </div>
@@ -105,16 +110,16 @@ export default function Dashboard() {
       {data.pending_tasks.length > 0 && (
         <div className="card">
           <h3>
-            📋 近期待办
+            {t('overview.recentTasks')}
             <Link to="/tasks" className="meta">
-              <span className="btn btn-sm">全部任务</span>
+              <span className="btn btn-sm">{t('overview.allTasks')}</span>
             </Link>
           </h3>
-          {data.pending_tasks.slice(0, 6).map((t) => (
-            <div className="task-item" key={t.id}>
-              <span className="badge badge-warning">{fmtTime(t.due_time)}</span>
-              <span className="title">{t.title}</span>
-              {t.detail && <span className="meta">{t.detail}</span>}
+          {data.pending_tasks.slice(0, 6).map((tk) => (
+            <div className="task-item" key={tk.id}>
+              <span className="badge badge-warning">{fmtTime(tk.due_time)}</span>
+              <span className="title">{tk.title}</span>
+              {tk.detail && <span className="meta">{tk.detail}</span>}
             </div>
           ))}
         </div>

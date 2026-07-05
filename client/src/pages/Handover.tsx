@@ -1,9 +1,11 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { api, fmtTime, Handover as HandoverType } from '../api';
 import { useStaff } from '../StaffContext';
+import { useI18n } from '../i18n';
 
 export default function Handover() {
   const { current } = useStaff();
+  const { t, tv } = useI18n();
   const [items, setItems] = useState<HandoverType[]>([]);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
@@ -37,60 +39,56 @@ export default function Handover() {
 
   return (
     <>
-      <div className="page-title">🔄 交接班记录</div>
+      <div className="page-title">{t('handover.title')}</div>
 
       <div className="card">
-        <h3>写交接班</h3>
+        <h3>{t('handover.write')}</h3>
         <form onSubmit={submit}>
           <div className="form-grid">
             <div className="field">
-              <label>日期</label>
+              <label>{t('handover.date')}</label>
               <input type="date" name="date" defaultValue={new Date().toISOString().slice(0, 10)} required />
             </div>
             <div className="field">
-              <label>班次</label>
+              <label>{t('handover.shift')}</label>
               <select name="shift" required>
-                <option>白班</option>
-                <option>夜班</option>
+                {['白班', '夜班'].map((v) => (
+                  <option key={v} value={v}>{tv(v)}</option>
+                ))}
               </select>
             </div>
             <div className="field">
-              <label>记录人</label>
+              <label>{t('common.recordedBy')}</label>
               <input value={current} readOnly />
             </div>
             <div className="field full">
-              <label>交接内容 *</label>
-              <textarea
-                name="content"
-                required
-                rows={4}
-                placeholder="记录本班母婴情况、异常事项、需下一班关注的重点…"
-              />
+              <label>{t('handover.content')}</label>
+              <textarea name="content" required rows={4} placeholder={t('handover.placeholder')} />
             </div>
           </div>
           {err && <div className="form-error">{err}</div>}
           <div className="actions" style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
             <button type="submit" className="btn btn-primary" disabled={busy}>
-              {busy ? '提交中…' : '提交交接班'}
+              {busy ? t('common.submitting') : t('handover.submit')}
             </button>
           </div>
         </form>
       </div>
 
       <div className="card">
-        <h3>历史记录</h3>
+        <h3>{t('handover.history')}</h3>
         {items.map((h) => (
           <div className="handover-item" key={h.id}>
             <div className="head">
               <span className="badge badge-room">{h.date}</span>
-              <span className={`badge ${h.shift === '夜班' ? 'badge-info' : 'badge-warning'}`}>{h.shift}</span>
+              <span className={`badge ${h.shift === '夜班' ? 'badge-info' : 'badge-warning'}`}>{tv(h.shift)}</span>
               <span>{h.author}</span>
-              <span>· 提交于 {fmtTime(h.created_at)}</span>
+              <span>· {t('handover.submittedAt')} {fmtTime(h.created_at)}</span>
             </div>
             <div style={{ whiteSpace: 'pre-wrap' }}>{h.content}</div>
           </div>
         ))}
-        {items.length === 0 && <div className="empty">暂无交接班记录</div>}
+        {items.length === 0 && <div className="empty">{t('handover.empty')}</div>}
       </div>
     </>
   );
