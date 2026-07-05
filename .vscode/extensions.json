@@ -1,0 +1,7 @@
+{
+  "recommendations": [
+    "dbaeumer.vscode-eslint",
+    "ms-ceintl.vscode-language-pack-zh-hans",
+    "eamodio.gitlens"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "files.exclude": {
+    "**/node_modules": true,
+    "**/.wrangler": true,
+    "**/dist": true,
+    "**/*.tsbuildinfo": true
+  },
+  "editor.tabSize": 2,
+  "editor.formatOnSave": false,
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "git.autofetch": true
+}

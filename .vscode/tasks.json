@@ -1,0 +1,48 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "▶ 本地预览（改代码实时刷新）",
+      "type": "shell",
+      "command": "npm run dev",
+      "group": { "kind": "build", "isDefault": true },
+      "presentation": { "panel": "dedicated", "reveal": "always" },
+      "problemMatcher": []
+    },
+    {
+      "label": "🚀 部署到 Cloudflare",
+      "type": "shell",
+      "command": "npm run cf:deploy",
+      "presentation": { "panel": "dedicated", "reveal": "always" },
+      "problemMatcher": []
+    },
+    {
+      "label": "🗄 更新线上数据库表结构（改了 db/schema.sql 后运行）",
+      "type": "shell",
+      "command": "npm run cf:db:schema",
+      "presentation": { "panel": "shared", "reveal": "always" },
+      "problemMatcher": []
+    },
+    {
+      "label": "⬇ 拉取最新代码（Claude 推送改动后运行）",
+      "type": "shell",
+      "command": "git pull origin claude/postpartum-tracking-app-vzhnnj && npm install",
+      "presentation": { "panel": "shared", "reveal": "always" },
+      "problemMatcher": []
+    },
+    {
+      "label": "⬆ 提交并推送我的改动",
+      "type": "shell",
+      "command": "git add -A && git commit -m \"${input:commitMsg}\" && git push origin claude/postpartum-tracking-app-vzhnnj",
+      "presentation": { "panel": "shared", "reveal": "always" },
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "commitMsg",
+      "type": "promptString",
+      "description": "简单描述这次改了什么（如：调整总览页文字）"
+    }
+  ]
+}
