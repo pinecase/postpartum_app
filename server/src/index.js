@@ -7,10 +7,41 @@ import { computeAlerts } from './alerts.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '20mb' })); // 记录可随附压缩照片（base64）
 
 const nowIso = () => new Date().toISOString();
 const todayStr = () => new Date().toISOString().slice(0, 10);
+
+// ---------- 照片 ----------
+const MAX_PHOTOS_PER_RECORD = 3;
+const MAX_PHOTO_B64_LEN = 600_000; // ≈450KB 二进制，客户端压缩后远小于此
+
+const insertPhotoStmt = () =>
+  db.prepare(`INSERT INTO photos (record_type, record_id, created_at, mime, data, recorded_by) VALUES (?, ?, ?, ?, ?, ?)`);
+
+function savePhotos(recordType, recordId, photos, recordedBy) {
+  if (!Array.isArray(photos)) return;
+  const stmt = insertPhotoStmt();
+  for (const p of photos.slice(0, MAX_PHOTOS_PER_RECORD)) {
+    if (!p || typeof p.data !== 'string' || !p.data) continue;
+    if (p.data.length > MAX_PHOTO_B64_LEN) {
+      throw Object.assign(new Error('照片过大，请重试'), { status: 413 });
+    }
+    stmt.run(recordType, recordId, nowIso(), p.mime || 'image/jpeg', p.data, recordedBy ?? null);
+  }
+}
+
+function photoRefs(recordType, subQuerySql, subQueryParam) {
+  return db
+    .prepare(`SELECT id, record_type, record_id FROM photos WHERE record_type = ? AND record_id IN (${subQuerySql})`)
+    .all(recordType, subQueryParam);
+}
+
+app.get('/api/photos/:id', (req, res) => {
+  const p = db.prepare(`SELECT * FROM photos WHERE id = ?`).get(req.params.id);
+  if (!p) return res.status(404).json({ error: '未找到照片' });
+  res.json(p);
+});
 
 // ---------- 员工 ----------
 app.get('/api/staff', (req, res) => {
@@ -120,7 +151,8 @@ app.get('/api/mothers/:id', (req, res) => {
   const tasks = db
     .prepare(`SELECT * FROM care_tasks WHERE subject_type = 'mother' AND subject_id = ? ORDER BY due_time DESC LIMIT 50`)
     .all(m.id);
-  res.json({ ...m, babies, vitals, tasks });
+  const photos = photoRefs('mother_vitals', `SELECT id FROM mother_vitals WHERE mother_id = ?`, m.id);
+  res.json({ ...m, babies, vitals, tasks, photos });
 });
 
 app.patch('/api/mothers/:id', (req, res) => {
@@ -150,7 +182,7 @@ app.post('/api/mothers/:id/vitals', (req, res) => {
   if (!m) return res.status(404).json({ error: '未找到产妇' });
   const {
     time, temperature_c, systolic, diastolic, pulse, lochia_amount, lochia_color,
-    wound_status, breast_status, mood_score, pain_score, notes, recorded_by,
+    wound_status, breast_status, mood_score, pain_score, notes, recorded_by, photos,
   } = req.body;
   const r = db.prepare(`
     INSERT INTO mother_vitals (mother_id, time, temperature_c, systolic, diastolic, pulse, lochia_amount, lochia_color, wound_status, breast_status, mood_score, pain_score, notes, recorded_by)
@@ -158,6 +190,7 @@ app.post('/api/mothers/:id/vitals', (req, res) => {
     .run(m.id, time || nowIso(), temperature_c ?? null, systolic ?? null, diastolic ?? null,
       pulse ?? null, lochia_amount ?? null, lochia_color ?? null, wound_status ?? null,
       breast_status ?? null, mood_score ?? null, pain_score ?? null, notes ?? null, recorded_by ?? null);
+  savePhotos('mother_vitals', r.lastInsertRowid, photos, recorded_by);
   res.status(201).json(db.prepare(`SELECT * FROM mother_vitals WHERE id = ?`).get(r.lastInsertRowid));
 });
 
@@ -174,52 +207,62 @@ app.get('/api/babies/:id', (req, res) => {
   const tasks = db
     .prepare(`SELECT * FROM care_tasks WHERE subject_type = 'baby' AND subject_id = ? ORDER BY due_time DESC LIMIT 50`)
     .all(b.id);
-  res.json({ ...b, feeds, diapers, vitals, cares, tasks });
+  const photos = [
+    ...photoRefs('feeds', `SELECT id FROM baby_feeds WHERE baby_id = ?`, b.id),
+    ...photoRefs('diapers', `SELECT id FROM baby_diapers WHERE baby_id = ?`, b.id),
+    ...photoRefs('vitals', `SELECT id FROM baby_vitals WHERE baby_id = ?`, b.id),
+    ...photoRefs('cares', `SELECT id FROM baby_cares WHERE baby_id = ?`, b.id),
+  ];
+  res.json({ ...b, feeds, diapers, vitals, cares, tasks, photos });
 });
 
 const babyExists = (id) => db.prepare(`SELECT id FROM babies WHERE id = ?`).get(id);
 
 app.post('/api/babies/:id/feeds', (req, res) => {
   if (!babyExists(req.params.id)) return res.status(404).json({ error: '未找到宝宝' });
-  const { time, method, amount_ml, duration_min, notes, recorded_by } = req.body;
+  const { time, method, amount_ml, duration_min, notes, recorded_by, photos } = req.body;
   if (!method) return res.status(400).json({ error: '喂养方式必填' });
   const r = db.prepare(`
     INSERT INTO baby_feeds (baby_id, time, method, amount_ml, duration_min, notes, recorded_by)
     VALUES (?, ?, ?, ?, ?, ?, ?)`)
     .run(req.params.id, time || nowIso(), method, amount_ml ?? null, duration_min ?? null, notes ?? null, recorded_by ?? null);
+  savePhotos('feeds', r.lastInsertRowid, photos, recorded_by);
   res.status(201).json(db.prepare(`SELECT * FROM baby_feeds WHERE id = ?`).get(r.lastInsertRowid));
 });
 
 app.post('/api/babies/:id/diapers', (req, res) => {
   if (!babyExists(req.params.id)) return res.status(404).json({ error: '未找到宝宝' });
-  const { time, type, stool_color, stool_consistency, notes, recorded_by } = req.body;
+  const { time, type, stool_color, stool_consistency, notes, recorded_by, photos } = req.body;
   if (!type) return res.status(400).json({ error: '类型必填' });
   const r = db.prepare(`
     INSERT INTO baby_diapers (baby_id, time, type, stool_color, stool_consistency, notes, recorded_by)
     VALUES (?, ?, ?, ?, ?, ?, ?)`)
     .run(req.params.id, time || nowIso(), type, stool_color ?? null, stool_consistency ?? null, notes ?? null, recorded_by ?? null);
+  savePhotos('diapers', r.lastInsertRowid, photos, recorded_by);
   res.status(201).json(db.prepare(`SELECT * FROM baby_diapers WHERE id = ?`).get(r.lastInsertRowid));
 });
 
 app.post('/api/babies/:id/vitals', (req, res) => {
   if (!babyExists(req.params.id)) return res.status(404).json({ error: '未找到宝宝' });
-  const { time, temperature_c, weight_g, jaundice_mg_dl, heart_rate, resp_rate, notes, recorded_by } = req.body;
+  const { time, temperature_c, weight_g, jaundice_mg_dl, heart_rate, resp_rate, notes, recorded_by, photos } = req.body;
   const r = db.prepare(`
     INSERT INTO baby_vitals (baby_id, time, temperature_c, weight_g, jaundice_mg_dl, heart_rate, resp_rate, notes, recorded_by)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(req.params.id, time || nowIso(), temperature_c ?? null, weight_g ?? null, jaundice_mg_dl ?? null,
       heart_rate ?? null, resp_rate ?? null, notes ?? null, recorded_by ?? null);
+  savePhotos('vitals', r.lastInsertRowid, photos, recorded_by);
   res.status(201).json(db.prepare(`SELECT * FROM baby_vitals WHERE id = ?`).get(r.lastInsertRowid));
 });
 
 app.post('/api/babies/:id/cares', (req, res) => {
   if (!babyExists(req.params.id)) return res.status(404).json({ error: '未找到宝宝' });
-  const { time, care_type, notes, recorded_by } = req.body;
+  const { time, care_type, notes, recorded_by, photos } = req.body;
   if (!care_type) return res.status(400).json({ error: '护理项目必填' });
   const r = db.prepare(`
     INSERT INTO baby_cares (baby_id, time, care_type, notes, recorded_by)
     VALUES (?, ?, ?, ?, ?)`)
     .run(req.params.id, time || nowIso(), care_type, notes ?? null, recorded_by ?? null);
+  savePhotos('cares', r.lastInsertRowid, photos, recorded_by);
   res.status(201).json(db.prepare(`SELECT * FROM baby_cares WHERE id = ?`).get(r.lastInsertRowid));
 });
 
@@ -285,6 +328,12 @@ if (fs.existsSync(clientDist)) {
   app.use(express.static(clientDist));
   app.get(/^(?!\/api\/).*/, (req, res) => res.sendFile(path.join(clientDist, 'index.html')));
 }
+
+// eslint-disable-next-line no-unused-vars
+app.use((e, req, res, next) => {
+  console.error(e);
+  res.status(e.status || 500).json({ error: e.status ? e.message : '服务器内部错误' });
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`月子中心护理记录系统已启动: http://localhost:${PORT}`));

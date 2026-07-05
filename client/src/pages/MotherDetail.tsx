@@ -7,6 +7,8 @@ import { api, fmtTime, dayOfLife, localDatetimeValue, MotherDetailData } from '.
 import { useStaff } from '../StaffContext';
 import { useI18n } from '../i18n';
 import Modal from '../components/Modal';
+import PhotoInput, { PhotoDraft } from '../components/PhotoInput';
+import { PhotoBadge } from '../components/PhotoViewer';
 
 export default function MotherDetail() {
   const { id } = useParams();
@@ -147,7 +149,10 @@ export default function MotherDetail() {
                   <td className="wrap">{v.breast_status || '—'}</td>
                   <td>{v.mood_score != null ? `${v.mood_score}/5` : '—'}</td>
                   <td>{v.pain_score != null ? `${v.pain_score}/10` : '—'}</td>
-                  <td className="wrap">{v.notes || '—'}</td>
+                  <td className="wrap">
+                    {v.notes || '—'}{' '}
+                    <PhotoBadge refs={data.photos.filter((p) => p.record_type === 'mother_vitals' && p.record_id === v.id)} />
+                  </td>
                   <td>{v.recorded_by || '—'}</td>
                 </tr>
               ))}
@@ -183,6 +188,7 @@ function VitalModal({
   const { t, tv } = useI18n();
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [photos, setPhotos] = useState<PhotoDraft[]>([]);
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -195,6 +201,7 @@ function VitalModal({
     for (const numKey of ['temperature_c', 'systolic', 'diastolic', 'pulse', 'mood_score', 'pain_score']) {
       if (body[numKey] != null) body[numKey] = Number(body[numKey]);
     }
+    if (photos.length) body.photos = photos.map((p) => ({ data: p.data, mime: p.mime }));
     setBusy(true);
     setErr('');
     try {
@@ -251,6 +258,10 @@ function VitalModal({
             </select>
           </div>
           <div className="field full"><label>{t('common.notes')}</label><textarea name="notes" /></div>
+          <div className="field full">
+            <label>{t('photo.photos')}</label>
+            <PhotoInput photos={photos} onChange={setPhotos} />
+          </div>
         </div>
         {err && <div className="form-error">{err}</div>}
         <div className="actions">

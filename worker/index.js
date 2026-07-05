@@ -14,6 +14,43 @@ const dayStartIso = () => {
 
 const err = (c, status, message) => c.json({ error: message }, status);
 
+// ---------- 照片 ----------
+const MAX_PHOTOS_PER_RECORD = 3;
+const MAX_PHOTO_B64_LEN = 600_000; // ≈450KB 二进制，客户端压缩后远小于此
+
+async function savePhotos(db, recordType, recordId, photos, recordedBy) {
+  if (!Array.isArray(photos) || !photos.length) return;
+  const stmts = [];
+  for (const p of photos.slice(0, MAX_PHOTOS_PER_RECORD)) {
+    if (!p || typeof p.data !== 'string' || !p.data) continue;
+    if (p.data.length > MAX_PHOTO_B64_LEN) {
+      const e = new Error('照片过大，请重试');
+      e.status = 413;
+      throw e;
+    }
+    stmts.push(
+      db.prepare(
+        `INSERT INTO photos (record_type, record_id, created_at, mime, data, recorded_by) VALUES (?, ?, ?, ?, ?, ?)`
+      ).bind(recordType, recordId, nowIso(), p.mime || 'image/jpeg', p.data, recordedBy ?? null)
+    );
+  }
+  if (stmts.length) await db.batch(stmts);
+}
+
+const photoRefs = async (db, recordType, subQuerySql, subQueryParam) =>
+  (
+    await db
+      .prepare(`SELECT id, record_type, record_id FROM photos WHERE record_type = ? AND record_id IN (${subQuerySql})`)
+      .bind(recordType, subQueryParam)
+      .all()
+  ).results;
+
+app.get('/api/photos/:id', async (c) => {
+  const p = await c.env.DB.prepare(`SELECT * FROM photos WHERE id = ?`).bind(c.req.param('id')).first();
+  if (!p) return err(c, 404, '未找到照片');
+  return c.json(p);
+});
+
 // ---------- 员工 ----------
 app.get('/api/staff', async (c) => {
   const { results } = await c.env.DB.prepare(`SELECT * FROM staff WHERE active = 1 ORDER BY id`).all();
@@ -132,7 +169,8 @@ app.get('/api/mothers/:id', async (c) => {
     c.env.DB.prepare(`SELECT * FROM mother_vitals WHERE mother_id = ? ORDER BY time DESC LIMIT 200`).bind(m.id),
     c.env.DB.prepare(`SELECT * FROM care_tasks WHERE subject_type = 'mother' AND subject_id = ? ORDER BY due_time DESC LIMIT 50`).bind(m.id),
   ]);
-  return c.json({ ...m, babies: babies.results, vitals: vitals.results, tasks: tasks.results });
+  const photos = await photoRefs(c.env.DB, 'mother_vitals', `SELECT id FROM mother_vitals WHERE mother_id = ?`, m.id);
+  return c.json({ ...m, babies: babies.results, vitals: vitals.results, tasks: tasks.results, photos });
 });
 
 app.patch('/api/mothers/:id', async (c) => {
@@ -173,6 +211,7 @@ app.post('/api/mothers/:id/vitals', async (c) => {
       b.pulse ?? null, b.lochia_amount ?? null, b.lochia_color ?? null, b.wound_status ?? null,
       b.breast_status ?? null, b.mood_score ?? null, b.pain_score ?? null, b.notes ?? null, b.recorded_by ?? null)
     .run();
+  await savePhotos(c.env.DB, 'mother_vitals', r.meta.last_row_id, b.photos, b.recorded_by);
   const row = await c.env.DB.prepare(`SELECT * FROM mother_vitals WHERE id = ?`).bind(r.meta.last_row_id).first();
   return c.json(row, 201);
 });
@@ -191,10 +230,16 @@ app.get('/api/babies/:id', async (c) => {
     c.env.DB.prepare(`SELECT * FROM baby_cares WHERE baby_id = ? ORDER BY time DESC LIMIT 300`).bind(b.id),
     c.env.DB.prepare(`SELECT * FROM care_tasks WHERE subject_type = 'baby' AND subject_id = ? ORDER BY due_time DESC LIMIT 50`).bind(b.id),
   ]);
+  const photos = [
+    ...(await photoRefs(c.env.DB, 'feeds', `SELECT id FROM baby_feeds WHERE baby_id = ?`, b.id)),
+    ...(await photoRefs(c.env.DB, 'diapers', `SELECT id FROM baby_diapers WHERE baby_id = ?`, b.id)),
+    ...(await photoRefs(c.env.DB, 'vitals', `SELECT id FROM baby_vitals WHERE baby_id = ?`, b.id)),
+    ...(await photoRefs(c.env.DB, 'cares', `SELECT id FROM baby_cares WHERE baby_id = ?`, b.id)),
+  ];
   return c.json({
     ...b,
     feeds: feeds.results, diapers: diapers.results, vitals: vitals.results,
-    cares: cares.results, tasks: tasks.results,
+    cares: cares.results, tasks: tasks.results, photos,
   });
 });
 
@@ -210,6 +255,7 @@ app.post('/api/babies/:id/feeds', async (c) => {
   )
     .bind(id, b.time || nowIso(), b.method, b.amount_ml ?? null, b.duration_min ?? null, b.notes ?? null, b.recorded_by ?? null)
     .run();
+  await savePhotos(c.env.DB, 'feeds', r.meta.last_row_id, b.photos, b.recorded_by);
   const row = await c.env.DB.prepare(`SELECT * FROM baby_feeds WHERE id = ?`).bind(r.meta.last_row_id).first();
   return c.json(row, 201);
 });
@@ -224,6 +270,7 @@ app.post('/api/babies/:id/diapers', async (c) => {
   )
     .bind(id, b.time || nowIso(), b.type, b.stool_color ?? null, b.stool_consistency ?? null, b.notes ?? null, b.recorded_by ?? null)
     .run();
+  await savePhotos(c.env.DB, 'diapers', r.meta.last_row_id, b.photos, b.recorded_by);
   const row = await c.env.DB.prepare(`SELECT * FROM baby_diapers WHERE id = ?`).bind(r.meta.last_row_id).first();
   return c.json(row, 201);
 });
@@ -239,6 +286,7 @@ app.post('/api/babies/:id/vitals', async (c) => {
     .bind(id, b.time || nowIso(), b.temperature_c ?? null, b.weight_g ?? null, b.jaundice_mg_dl ?? null,
       b.heart_rate ?? null, b.resp_rate ?? null, b.notes ?? null, b.recorded_by ?? null)
     .run();
+  await savePhotos(c.env.DB, 'vitals', r.meta.last_row_id, b.photos, b.recorded_by);
   const row = await c.env.DB.prepare(`SELECT * FROM baby_vitals WHERE id = ?`).bind(r.meta.last_row_id).first();
   return c.json(row, 201);
 });
@@ -253,6 +301,7 @@ app.post('/api/babies/:id/cares', async (c) => {
   )
     .bind(id, b.time || nowIso(), b.care_type, b.notes ?? null, b.recorded_by ?? null)
     .run();
+  await savePhotos(c.env.DB, 'cares', r.meta.last_row_id, b.photos, b.recorded_by);
   const row = await c.env.DB.prepare(`SELECT * FROM baby_cares WHERE id = ?`).bind(r.meta.last_row_id).first();
   return c.json(row, 201);
 });
@@ -330,7 +379,7 @@ app.post('/api/handovers', async (c) => {
 app.notFound((c) => err(c, 404, '接口不存在'));
 app.onError((e, c) => {
   console.error(e);
-  return err(c, 500, '服务器内部错误');
+  return err(c, e.status || 500, e.status ? e.message : '服务器内部错误');
 });
 
 export default app;

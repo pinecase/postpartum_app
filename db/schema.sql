@@ -119,6 +119,18 @@ CREATE TABLE IF NOT EXISTS handovers (
   created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS photos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  record_type TEXT NOT NULL,   -- feeds / diapers / vitals / cares / mother_vitals
+  record_id INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  mime TEXT NOT NULL DEFAULT 'image/jpeg',
+  data TEXT NOT NULL,          -- base64（客户端压缩后 ≤ 约 300KB）
+  recorded_by TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_photos_record ON photos(record_type, record_id);
+
 CREATE INDEX IF NOT EXISTS idx_feeds_baby_time ON baby_feeds(baby_id, time);
 CREATE INDEX IF NOT EXISTS idx_diapers_baby_time ON baby_diapers(baby_id, time);
 CREATE INDEX IF NOT EXISTS idx_bvitals_baby_time ON baby_vitals(baby_id, time);

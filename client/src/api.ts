@@ -145,10 +145,17 @@ export interface Overview {
   stats: { mothers_in_house: number; babies_in_house: number; pending_task_count: number };
 }
 
+export interface PhotoRef {
+  id: number;
+  record_type: string;
+  record_id: number;
+}
+
 export interface MotherDetailData extends Mother {
   babies: Baby[];
   vitals: MotherVital[];
   tasks: CareTask[];
+  photos: PhotoRef[];
 }
 
 export interface BabyDetailData extends Baby {
@@ -159,6 +166,7 @@ export interface BabyDetailData extends Baby {
   vitals: BabyVital[];
   cares: BabyCare[];
   tasks: CareTask[];
+  photos: PhotoRef[];
 }
 
 async function handle<T>(res: Response): Promise<T> {

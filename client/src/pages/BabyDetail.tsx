@@ -4,10 +4,12 @@ import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ReferenceLine,
   ResponsiveContainer, CartesianGrid,
 } from 'recharts';
-import { api, fmtTime, dayOfLife, localDatetimeValue, BabyDetailData } from '../api';
+import { api, fmtTime, dayOfLife, localDatetimeValue, BabyDetailData, PhotoRef } from '../api';
 import { useStaff } from '../StaffContext';
 import { useI18n } from '../i18n';
 import Modal from '../components/Modal';
+import PhotoInput, { PhotoDraft } from '../components/PhotoInput';
+import { PhotoBadge } from '../components/PhotoViewer';
 
 type Tab = 'feeds' | 'diapers' | 'vitals' | 'cares';
 type ModalKind = Tab | null;
@@ -66,6 +68,8 @@ export default function BabyDetail() {
 
   const latestWeight = data.vitals.find((v) => v.weight_g != null);
   const latestJaundice = data.vitals.find((v) => v.jaundice_mg_dl != null);
+  const refsFor = (type: Tab, recordId: number): PhotoRef[] =>
+    data.photos.filter((p) => p.record_type === type && p.record_id === recordId);
 
   return (
     <>
@@ -184,7 +188,7 @@ export default function BabyDetail() {
                     <td>{tv(f.method)}</td>
                     <td>{f.amount_ml ? `${f.amount_ml} ml` : '—'}</td>
                     <td>{f.duration_min ? t('feeds.minutes', { n: f.duration_min }) : '—'}</td>
-                    <td className="wrap">{f.notes || '—'}</td>
+                    <td className="wrap">{f.notes || '—'} <PhotoBadge refs={refsFor('feeds', f.id)} /></td>
                     <td>{f.recorded_by || '—'}</td>
                   </tr>
                 ))}
@@ -207,7 +211,7 @@ export default function BabyDetail() {
                     <td>{tv(d.type)}</td>
                     <td>{tv(d.stool_color)}</td>
                     <td>{tv(d.stool_consistency)}</td>
-                    <td className="wrap">{d.notes || '—'}</td>
+                    <td className="wrap">{d.notes || '—'} <PhotoBadge refs={refsFor('diapers', d.id)} /></td>
                     <td>{d.recorded_by || '—'}</td>
                   </tr>
                 ))}
@@ -232,7 +236,7 @@ export default function BabyDetail() {
                     <td>{v.weight_g != null ? `${v.weight_g} g` : '—'}</td>
                     <td>{v.jaundice_mg_dl != null ? `${v.jaundice_mg_dl} mg/dL` : '—'}</td>
                     <td>{v.heart_rate ?? '—'}</td>
-                    <td>{v.resp_rate ?? '—'}</td>
+                    <td>{v.resp_rate ?? '—'} <PhotoBadge refs={refsFor('vitals', v.id)} /></td>
                     <td>{v.recorded_by || '—'}</td>
                   </tr>
                 ))}
@@ -253,7 +257,7 @@ export default function BabyDetail() {
                   <tr key={c.id}>
                     <td>{fmtTime(c.time)}</td>
                     <td>{tv(c.care_type)}</td>
-                    <td className="wrap">{c.notes || '—'}</td>
+                    <td className="wrap">{c.notes || '—'} <PhotoBadge refs={refsFor('cares', c.id)} /></td>
                     <td>{c.recorded_by || '—'}</td>
                   </tr>
                 ))}
@@ -292,6 +296,7 @@ function RecordModal({
   const { t, tv } = useI18n();
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [photos, setPhotos] = useState<PhotoDraft[]>([]);
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -304,6 +309,7 @@ function RecordModal({
     for (const numKey of ['amount_ml', 'duration_min', 'temperature_c', 'weight_g', 'jaundice_mg_dl', 'heart_rate', 'resp_rate']) {
       if (body[numKey] != null) body[numKey] = Number(body[numKey]);
     }
+    if (photos.length) body.photos = photos.map((p) => ({ data: p.data, mime: p.mime }));
     setBusy(true);
     setErr('');
     try {
@@ -387,6 +393,10 @@ function RecordModal({
             </div>
           )}
           <div className="field full"><label>{t('common.notes')}</label><textarea name="notes" /></div>
+          <div className="field full">
+            <label>{t('photo.photos')}</label>
+            <PhotoInput photos={photos} onChange={setPhotos} />
+          </div>
         </div>
         {err && <div className="form-error">{err}</div>}
         <div className="actions">

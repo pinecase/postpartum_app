@@ -209,6 +209,11 @@ const zh = {
   'admission.dischargedList': '已离所（{n}）',
   'admission.dischargeTime': '离所时间',
   'admission.noneInHouse': '暂无在住产妇',
+
+  'photo.take': '拍照',
+  'photo.photos': '照片',
+  'photo.remove': '删除照片',
+  'photo.hint': '最多 {n} 张，自动压缩后保存；手机上会调用相机（需允许相机权限）',
 };
 
 const en: Partial<typeof zh> = {
@@ -413,6 +418,11 @@ const en: Partial<typeof zh> = {
   'admission.dischargedList': 'Discharged ({n})',
   'admission.dischargeTime': 'Discharged at',
   'admission.noneInHouse': 'No mothers in house',
+
+  'photo.take': 'Take photo',
+  'photo.photos': 'Photos',
+  'photo.remove': 'Remove photo',
+  'photo.hint': 'Up to {n} photos, compressed automatically; opens the camera on phones (camera permission required)',
 };
 
 const ms: Partial<typeof zh> = {
@@ -617,6 +627,11 @@ const ms: Partial<typeof zh> = {
   'admission.dischargedList': 'Telah keluar ({n})',
   'admission.dischargeTime': 'Masa keluar',
   'admission.noneInHouse': 'Tiada ibu menginap',
+
+  'photo.take': 'Ambil gambar',
+  'photo.photos': 'Gambar',
+  'photo.remove': 'Buang gambar',
+  'photo.hint': 'Maksimum {n} gambar, dimampatkan secara automatik; membuka kamera pada telefon (kebenaran kamera diperlukan)',
 };
 
 export const MESSAGES: Record<Lang, Record<string, string>> = {
