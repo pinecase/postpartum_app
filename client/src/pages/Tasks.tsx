@@ -8,6 +8,12 @@ import Modal from '../components/Modal';
 const FILTERS = ['待办', '已完成', '全部'] as const;
 type Filter = (typeof FILTERS)[number];
 
+// 任务类型下拉选项（中文为存储值，显示时按语言翻译）；「其他」时手动输入标题
+const TASK_TYPES = [
+  '护理记录/观察', '换尿布', '体征测量', '汇总统计', '宝宝拍照', '脚部按摩',
+  '鼻泪管按摩', '晾臀', '补充剂/用药', '母婴同室', '喂奶时间', '洗澡记录', '其他',
+];
+
 export default function Tasks() {
   const { current } = useStaff();
   const { t, tv } = useI18n();
@@ -65,7 +71,7 @@ export default function Tasks() {
                 {tk.subject_name}
               </span>
             </Link>
-            <span className="title">{tk.title}</span>
+            <span className="title">{tv(tk.title)}</span>
             {tk.detail && <span className="meta">{tk.detail}</span>}
             <span className="spacer" />
             {tk.status === '已完成' ? (
@@ -101,10 +107,11 @@ function TaskModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const { t } = useI18n();
+  const { t, tv } = useI18n();
   const [mothers, setMothers] = useState<Mother[]>([]);
   const [babies, setBabies] = useState<(Baby & { mother_name?: string })[]>([]);
   const [subjectType, setSubjectType] = useState<'mother' | 'baby'>('baby');
+  const [taskType, setTaskType] = useState(TASK_TYPES[0]);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -126,7 +133,7 @@ function TaskModal({
     const body: Record<string, unknown> = {
       subject_type: subjectType,
       subject_id: Number(fd.get('subject_id')),
-      title: fd.get('title'),
+      title: taskType === '其他' ? fd.get('title') : taskType,
       detail: fd.get('detail') || null,
       due_time: new Date(String(fd.get('due_time'))).toISOString(),
       created_by: createdBy,
@@ -165,7 +172,20 @@ function TaskModal({
             <label>{t('tasks.dueTime')}</label>
             <input type="datetime-local" name="due_time" defaultValue={localDatetimeValue()} required />
           </div>
-          <div className="field full"><label>{t('tasks.taskTitle')}</label><input name="title" required placeholder={t('tasks.titlePlaceholder')} /></div>
+          <div className="field full">
+            <label>{t('tasks.taskTitle')}</label>
+            <select value={taskType} onChange={(e) => setTaskType(e.target.value)}>
+              {TASK_TYPES.map((v) => (
+                <option key={v} value={v}>{tv(v)}</option>
+              ))}
+            </select>
+          </div>
+          {taskType === '其他' && (
+            <div className="field full">
+              <label>{t('tasks.taskTitle')}</label>
+              <input name="title" required placeholder={t('tasks.titlePlaceholder')} />
+            </div>
+          )}
           <div className="field full"><label>{t('tasks.detail')}</label><textarea name="detail" /></div>
         </div>
         {err && <div className="form-error">{err}</div>}

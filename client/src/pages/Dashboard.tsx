@@ -118,7 +118,7 @@ export default function Dashboard() {
           {data.pending_tasks.slice(0, 6).map((tk) => (
             <div className="task-item" key={tk.id}>
               <span className="badge badge-warning">{fmtTime(tk.due_time)}</span>
-              <span className="title">{tk.title}</span>
+              <span className="title">{tv(tk.title)}</span>
               {tk.detail && <span className="meta">{tk.detail}</span>}
             </div>
           ))}
