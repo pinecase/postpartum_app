@@ -9,6 +9,27 @@ import Handover from './pages/Handover';
 import Admission from './pages/Admission';
 import Admin from './pages/Admin';
 
+function BottomNav() {
+  const { t } = useI18n();
+  const tabs = [
+    { to: '/', icon: '🏠', label: t('nav.overview'), end: true },
+    { to: '/tasks', icon: '📋', label: t('nav.tasks') },
+    { to: '/admission', icon: '👶', label: t('nav.admission') },
+    { to: '/handover', icon: '🔄', label: t('nav.handover') },
+    { to: '/admin', icon: '📊', label: t('nav.admin') },
+  ];
+  return (
+    <nav className="bottom-nav">
+      {tabs.map((tab) => (
+        <NavLink key={tab.to} to={tab.to} end={tab.end}>
+          <span className="ico">{tab.icon}</span>
+          {tab.label}
+        </NavLink>
+      ))}
+    </nav>
+  );
+}
+
 function Header() {
   const { staff, current, setCurrent } = useStaff();
   const { lang, setLang, t, tv } = useI18n();
@@ -63,6 +84,7 @@ export default function App() {
             <Route path="/admin" element={<Admin />} />
           </Routes>
         </main>
+        <BottomNav />
       </StaffProvider>
     </I18nProvider>
   );

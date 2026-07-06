@@ -4,6 +4,9 @@ import { api, fmtTime, localDatetimeValue, CareTask, Mother, Baby } from '../api
 import { useStaff } from '../StaffContext';
 import { useI18n } from '../i18n';
 import Modal from '../components/Modal';
+import PhotoInput, { PhotoDraft } from '../components/PhotoInput';
+import { PhotoBadge } from '../components/PhotoViewer';
+import VoiceInput from '../components/VoiceInput';
 
 const FILTERS = ['待办', '已完成', '全部'] as const;
 type Filter = (typeof FILTERS)[number];
@@ -13,6 +16,23 @@ const TASK_TYPES = [
   '护理记录/观察', '换尿布', '体征测量', '汇总统计', '宝宝拍照', '脚部按摩',
   '鼻泪管按摩', '晾臀', '补充剂/用药', '母婴同室', '喂奶时间', '洗澡记录', '其他',
 ];
+
+// 每种任务类型的常用细节，点选后填入说明，免去手动输入
+const DETAIL_PRESETS: Record<string, string[]> = {
+  '护理记录/观察': ['精神状态好', '睡眠安稳', '哭闹较多', '吐奶', '溢奶', '皮肤黄染', '皮疹', '脐部干燥'],
+  '换尿布': ['小便', '大便·糊状', '大便·稀', '尿布疹', '臀部护理', '涂护臀膏'],
+  '体征测量': ['体温', '体重', '黄疸', '心率', '呼吸'],
+  '汇总统计': ['今日喂养汇总', '今日大小便汇总', '今日体征汇总'],
+  '宝宝拍照': ['日常照', '伤口/皮肤记录', '黄疸对比照'],
+  '脚部按摩': ['双侧', '左脚', '右脚', '10 分钟', '15 分钟'],
+  '鼻泪管按摩': ['双侧', '左眼', '右眼', '分泌物增多', '已清洁'],
+  '晾臀': ['10 分钟', '15 分钟', '红臀观察', '涂护臀膏'],
+  '补充剂/用药': ['维生素D', '益生菌', '退黄药物', '遵医嘱用药'],
+  '母婴同室': ['30 分钟', '1 小时', '2 小时', '哺乳指导'],
+  '喂奶时间': ['母乳亲喂', '瓶喂母乳', '配方奶', '拍嗝', '奶量记录'],
+  '洗澡记录': ['洗澡', '抚触', '脐部护理', '游泳'],
+  '其他': [],
+};
 
 export default function Tasks() {
   const { current } = useStaff();
@@ -73,6 +93,7 @@ export default function Tasks() {
             </Link>
             <span className="title">{tv(tk.title)}</span>
             {tk.detail && <span className="meta">{tk.detail}</span>}
+            {tk.photos && tk.photos.length > 0 && <PhotoBadge refs={tk.photos} />}
             <span className="spacer" />
             {tk.status === '已完成' ? (
               <span className="meta">
@@ -112,8 +133,23 @@ function TaskModal({
   const [babies, setBabies] = useState<(Baby & { mother_name?: string })[]>([]);
   const [subjectType, setSubjectType] = useState<'mother' | 'baby'>('baby');
   const [taskType, setTaskType] = useState(TASK_TYPES[0]);
+  const [detail, setDetail] = useState('');
+  const [photos, setPhotos] = useState<PhotoDraft[]>([]);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // 点选快捷项：已存在则移除，不存在则追加到说明
+  const toggleChip = (chipText: string) => {
+    setDetail((d) => {
+      if (d.includes(chipText)) {
+        return d
+          .split('、')
+          .filter((part) => part.trim() !== chipText)
+          .join('、');
+      }
+      return d ? `${d}、${chipText}` : chipText;
+    });
+  };
 
   useEffect(() => {
     api.get<Mother[]>('/api/mothers?status=在住').then(async (ms) => {
@@ -134,10 +170,11 @@ function TaskModal({
       subject_type: subjectType,
       subject_id: Number(fd.get('subject_id')),
       title: taskType === '其他' ? fd.get('title') : taskType,
-      detail: fd.get('detail') || null,
+      detail: detail.trim() || null,
       due_time: new Date(String(fd.get('due_time'))).toISOString(),
       created_by: createdBy,
     };
+    if (photos.length) body.photos = photos.map((p) => ({ data: p.data, mime: p.mime }));
     setBusy(true);
     setErr('');
     try {
@@ -186,7 +223,32 @@ function TaskModal({
               <input name="title" required placeholder={t('tasks.titlePlaceholder')} />
             </div>
           )}
-          <div className="field full"><label>{t('tasks.detail')}</label><textarea name="detail" /></div>
+          {DETAIL_PRESETS[taskType]?.length > 0 && (
+            <div className="field full">
+              <label>{t('tasks.quickDetail')}</label>
+              <div className="chip-row">
+                {DETAIL_PRESETS[taskType].map((chip) => (
+                  <button
+                    type="button"
+                    key={chip}
+                    className={`chip ${detail.includes(chip) ? 'on' : ''}`}
+                    onClick={() => toggleChip(chip)}
+                  >
+                    {tv(chip)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="field full">
+            <label>{t('tasks.detail')}</label>
+            <textarea value={detail} onChange={(e) => setDetail(e.target.value)} rows={3} />
+            <VoiceInput onText={(text) => setDetail((d) => (d ? `${d} ${text}` : text))} />
+          </div>
+          <div className="field full">
+            <label>{t('photo.photos')}</label>
+            <PhotoInput photos={photos} onChange={setPhotos} />
+          </div>
         </div>
         {err && <div className="form-error">{err}</div>}
         <div className="actions">

@@ -5,22 +5,24 @@
 }
 
 :root {
-  --bg: #f6f7f9;
-  --card: #ffffff;
-  --ink: #1f2937;
-  --muted: #6b7280;
-  --line: #e5e7eb;
-  --brand: #0f766e;
-  --brand-soft: #ccfbf1;
-  --pink: #be185d;
-  --pink-soft: #fce7f3;
-  --danger: #b91c1c;
-  --danger-soft: #fee2e2;
-  --warning: #b45309;
-  --warning-soft: #fef3c7;
-  --info: #1d4ed8;
-  --info-soft: #dbeafe;
-  --radius: 12px;
+  /* 暖色 App 风格主题 */
+  --bg: #f2eee3;
+  --card: #fffdf7;
+  --ink: #2b332c;
+  --muted: #7d8579;
+  --line: #e6e1d2;
+  --brand: #4d6b57;
+  --brand-deep: #3c5646;
+  --brand-soft: #e2eadb;
+  --pink: #b04a6e;
+  --pink-soft: #f7e4ea;
+  --danger: #b03a30;
+  --danger-soft: #f8e3df;
+  --warning: #a86518;
+  --warning-soft: #f7ecd8;
+  --info: #3e5f96;
+  --info-soft: #e2eaf6;
+  --radius: 16px;
 }
 
 body {
@@ -328,9 +330,9 @@ td.wrap {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 14px;
+  padding: 8px 16px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 999px;
   background: var(--card);
   color: var(--ink);
   font-size: 14px;
@@ -350,7 +352,7 @@ td.wrap {
 }
 
 .btn-primary:hover {
-  background: #115e59;
+  background: var(--brand-deep);
   color: #fff;
 }
 
@@ -679,9 +681,166 @@ td.wrap {
   border-radius: 10px;
 }
 
+/* ---------- 底部导航（App 风格） ---------- */
+.bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+  display: flex;
+  background: var(--card);
+  border-top: 1px solid var(--line);
+  padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+}
+
+.bottom-nav a {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 0;
+  color: var(--muted);
+  font-size: 11px;
+  border-radius: 12px;
+}
+
+.bottom-nav a .ico {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.bottom-nav a.active {
+  color: var(--brand);
+  font-weight: 700;
+}
+
+.page {
+  padding-bottom: 84px;
+}
+
+@media (min-width: 768px) {
+  .bottom-nav {
+    display: none;
+  }
+
+  .page {
+    padding-bottom: 16px;
+  }
+}
+
+@media (max-width: 767px) {
+  .app-nav {
+    display: none;
+  }
+}
+
+/* ---------- 工作台英雄卡 ---------- */
+.hero {
+  background: linear-gradient(140deg, var(--brand-deep), var(--brand));
+  color: #fff;
+  border-radius: 20px;
+  padding: 18px 20px;
+  margin-bottom: 14px;
+}
+
+.hero .hero-sub {
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+.hero h2 {
+  font-size: 22px;
+  margin: 2px 0 14px;
+}
+
+.hero .hero-stats {
+  display: flex;
+  gap: 8px;
+}
+
+.hero .hero-stats > div {
+  flex: 1;
+}
+
+.hero .num {
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.hero .label {
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+/* ---------- 喂养计时环 ---------- */
+.feed-ring {
+  position: relative;
+  width: 58px;
+  height: 58px;
+  flex-shrink: 0;
+}
+
+.feed-ring svg {
+  transform: rotate(-90deg);
+}
+
+.feed-ring .ring-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.feed-ring .ring-text small {
+  font-size: 9px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+/* ---------- 快捷细节选项 ---------- */
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--ink);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.chip.on {
+  background: var(--brand-soft);
+  border-color: var(--brand);
+  color: var(--brand-deep);
+  font-weight: 600;
+}
+
+.voice-btn {
+  align-self: flex-start;
+}
+
+.voice-btn.listening {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
 @media (max-width: 640px) {
   .page {
-    padding: 12px;
+    padding: 12px 12px 84px;
   }
 
   .staff-picker {

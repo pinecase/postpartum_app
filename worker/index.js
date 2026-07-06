@@ -83,10 +83,11 @@ app.get('/api/overview', async (c) => {
 
     const babyRows = [];
     for (const b of babies) {
-      const [bv, lf, ft, dt] = await db.batch([
+      const [bv, lf, ft, mt, dt] = await db.batch([
         db.prepare(`SELECT * FROM baby_vitals WHERE baby_id = ? ORDER BY time DESC LIMIT 1`).bind(b.id),
         db.prepare(`SELECT * FROM baby_feeds WHERE baby_id = ? ORDER BY time DESC LIMIT 1`).bind(b.id),
         db.prepare(`SELECT COUNT(*) AS c FROM baby_feeds WHERE baby_id = ? AND time >= ?`).bind(b.id, dayStart),
+        db.prepare(`SELECT COALESCE(SUM(amount_ml), 0) AS c FROM baby_feeds WHERE baby_id = ? AND time >= ?`).bind(b.id, dayStart),
         db.prepare(`SELECT COUNT(*) AS c FROM baby_diapers WHERE baby_id = ? AND time >= ?`).bind(b.id, dayStart),
       ]);
       babyRows.push({
@@ -94,6 +95,7 @@ app.get('/api/overview', async (c) => {
         latest_vital: bv.results[0] || null,
         last_feed: lf.results[0] || null,
         feeds_today: ft.results[0].c,
+        milk_today: mt.results[0].c,
         diapers_today: dt.results[0].c,
       });
     }
@@ -313,6 +315,9 @@ app.get('/api/tasks', async (c) => {
     ? (await c.env.DB.prepare(`SELECT * FROM care_tasks WHERE status = ? ORDER BY due_time`).bind(status).all()).results
     : (await c.env.DB.prepare(`SELECT * FROM care_tasks ORDER BY status DESC, due_time`).all()).results;
 
+  const taskPhotos = (
+    await c.env.DB.prepare(`SELECT id, record_type, record_id FROM photos WHERE record_type = 'tasks'`).all()
+  ).results;
   const out = [];
   for (const t of rows) {
     const s =
@@ -321,7 +326,12 @@ app.get('/api/tasks', async (c) => {
         : await c.env.DB.prepare(
             `SELECT b.name, m.room FROM babies b JOIN mothers m ON m.id = b.mother_id WHERE b.id = ?`
           ).bind(t.subject_id).first();
-    out.push({ ...t, subject_name: s?.name ?? '—', room: s?.room ?? '—' });
+    out.push({
+      ...t,
+      subject_name: s?.name ?? '—',
+      room: s?.room ?? '—',
+      photos: taskPhotos.filter((p) => p.record_id === t.id),
+    });
   }
   return c.json(out);
 });
@@ -334,6 +344,7 @@ app.post('/api/tasks', async (c) => {
   )
     .bind(b.subject_type, b.subject_id, b.due_time || nowIso(), b.title, b.detail ?? null, b.created_by ?? null)
     .run();
+  await savePhotos(c.env.DB, 'tasks', r.meta.last_row_id, b.photos, b.created_by);
   const row = await c.env.DB.prepare(`SELECT * FROM care_tasks WHERE id = ?`).bind(r.meta.last_row_id).first();
   return c.json(row, 201);
 });

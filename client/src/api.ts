@@ -108,6 +108,7 @@ export interface CareTask {
   completed_at: string | null;
   subject_name?: string;
   room?: string;
+  photos?: PhotoRef[];
 }
 
 export interface Handover {
@@ -135,6 +136,7 @@ export interface OverviewBaby extends Baby {
   latest_vital: BabyVital | null;
   last_feed: Feed | null;
   feeds_today: number;
+  milk_today: number;
   diapers_today: number;
 }
 

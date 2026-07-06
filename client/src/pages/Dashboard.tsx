@@ -2,9 +2,39 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, fmtTime, dayOfLife, Overview } from '../api';
 import { useI18n } from '../i18n';
+import { useStaff } from '../StaffContext';
+
+// 距上次喂养的计时环：<2h 绿色，2-3h 琥珀，>3h 红色
+function FeedRing({ lastFeedTime, label }: { lastFeedTime: string | null; label: string }) {
+  const minutes = lastFeedTime
+    ? Math.max(0, Math.floor((Date.now() - new Date(lastFeedTime).getTime()) / 60000))
+    : null;
+  const frac = minutes == null ? 1 : Math.min(1, minutes / 240);
+  const color = minutes == null || minutes >= 180 ? 'var(--danger)' : minutes >= 120 ? 'var(--warning)' : 'var(--brand)';
+  const text =
+    minutes == null ? '—' : minutes >= 60 ? `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, '0')}` : `${minutes}'`;
+  const R = 24;
+  const C = 2 * Math.PI * R;
+  return (
+    <div className="feed-ring">
+      <svg width="58" height="58" viewBox="0 0 58 58">
+        <circle cx="29" cy="29" r={R} fill="none" stroke="var(--line)" strokeWidth="5" />
+        <circle
+          cx="29" cy="29" r={R} fill="none" stroke={color} strokeWidth="5" strokeLinecap="round"
+          strokeDasharray={`${C * frac} ${C}`}
+        />
+      </svg>
+      <div className="ring-text" style={{ color }}>
+        {text}
+        <small>{label}</small>
+      </div>
+    </div>
+  );
+}
 
 export default function Dashboard() {
   const { t, tv } = useI18n();
+  const { current } = useStaff();
   const [data, setData] = useState<Overview | null>(null);
   const [error, setError] = useState('');
 
@@ -19,24 +49,36 @@ export default function Dashboard() {
   if (error) return <div className="card">{t('common.loadFailed')}：{error}</div>;
   if (!data) return <div className="empty">{t('common.loading')}</div>;
 
+  const allBabies = data.rooms.flatMap((r) => r.babies);
+  const feedsToday = allBabies.reduce((s, b) => s + b.feeds_today, 0);
+  const milkToday = allBabies.reduce((s, b) => s + (b.milk_today || 0), 0);
+  const diapersToday = allBabies.reduce((s, b) => s + b.diapers_today, 0);
+  const today = new Date();
+
   return (
     <>
-      <div className="grid grid-stats">
-        <div className="stat">
-          <div className="num">{data.stats.mothers_in_house}</div>
-          <div className="label">{t('stats.mothersInHouse')}</div>
+      <div className="hero">
+        <div className="hero-sub">
+          {today.getMonth() + 1}/{today.getDate()} · {current}
         </div>
-        <div className="stat">
-          <div className="num">{data.stats.babies_in_house}</div>
-          <div className="label">{t('stats.babiesInHouse')}</div>
-        </div>
-        <div className="stat">
-          <div className="num">{data.alerts.filter((a) => a.level === 'danger').length}</div>
-          <div className="label">{t('stats.dangerAlerts')}</div>
-        </div>
-        <div className="stat">
-          <div className="num">{data.stats.pending_task_count}</div>
-          <div className="label">{t('stats.pendingTasks')}</div>
+        <h2>{t('dash.hero')}</h2>
+        <div className="hero-stats">
+          <div>
+            <div className="num">{data.stats.babies_in_house}</div>
+            <div className="label">{t('dash.inHouse')}</div>
+          </div>
+          <div>
+            <div className="num">{feedsToday}</div>
+            <div className="label">{t('dash.feedsToday')}</div>
+          </div>
+          <div>
+            <div className="num">{milkToday}</div>
+            <div className="label">{t('dash.milkToday')}</div>
+          </div>
+          <div>
+            <div className="num">{diapersToday}</div>
+            <div className="label">{t('dash.diapersToday')}</div>
+          </div>
         </div>
       </div>
 
@@ -87,14 +129,19 @@ export default function Dashboard() {
             {babies.map((b) => (
               <Link to={`/babies/${b.id}`} key={b.id}>
                 <div className="baby-row">
-                  <span className="badge badge-baby">{t('common.baby')}</span>
-                  <span className="name">{b.name}</span>
-                  <span className="meta">
-                    {t('overview.lifeDay', { n: dayOfLife(b.birth_date) })} ·{' '}
-                    {t('overview.feedsToday', { n: b.feeds_today })} ·{' '}
-                    {t('overview.diapersToday', { n: b.diapers_today })}
-                    {b.last_feed && ` · ${t('overview.lastFeed', { t: fmtTime(b.last_feed.time) })}`}
-                  </span>
+                  <FeedRing lastFeedTime={b.last_feed?.time ?? null} label={t('dash.sinceFeed')} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div>
+                      <span className="badge badge-baby">{t('common.baby')}</span>{' '}
+                      <span className="name">{b.name}</span>
+                    </div>
+                    <span className="meta">
+                      {t('overview.lifeDay', { n: dayOfLife(b.birth_date) })} ·{' '}
+                      {t('overview.feedsToday', { n: b.feeds_today })} ·{' '}
+                      {t('overview.diapersToday', { n: b.diapers_today })}
+                      {b.last_feed && ` · ${t('overview.lastFeed', { t: fmtTime(b.last_feed.time) })}`}
+                    </span>
+                  </div>
                 </div>
               </Link>
             ))}

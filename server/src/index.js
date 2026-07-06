@@ -65,6 +65,7 @@ app.get('/api/overview', (req, res) => {
   const latestBabyVital = db.prepare(`SELECT * FROM baby_vitals WHERE baby_id = ? ORDER BY time DESC LIMIT 1`);
   const lastFeed = db.prepare(`SELECT * FROM baby_feeds WHERE baby_id = ? ORDER BY time DESC LIMIT 1`);
   const feedsToday = db.prepare(`SELECT COUNT(*) AS c FROM baby_feeds WHERE baby_id = ? AND time >= ?`);
+  const milkToday = db.prepare(`SELECT COALESCE(SUM(amount_ml), 0) AS c FROM baby_feeds WHERE baby_id = ? AND time >= ?`);
   const diapersToday = db.prepare(`SELECT COUNT(*) AS c FROM baby_diapers WHERE baby_id = ? AND time >= ?`);
 
   const dayStart = new Date();
@@ -78,6 +79,7 @@ app.get('/api/overview', (req, res) => {
       latest_vital: latestBabyVital.get(b.id) || null,
       last_feed: lastFeed.get(b.id) || null,
       feeds_today: feedsToday.get(b.id, dayStartIso).c,
+      milk_today: milkToday.get(b.id, dayStartIso).c,
       diapers_today: diapersToday.get(b.id, dayStartIso).c,
     })),
   }));
@@ -277,16 +279,24 @@ app.get('/api/tasks', (req, res) => {
   const babyName = db.prepare(
     `SELECT b.name, m.room FROM babies b JOIN mothers m ON m.id = b.mother_id WHERE b.id = ?`
   );
+  const taskPhotos = db
+    .prepare(`SELECT id, record_type, record_id FROM photos WHERE record_type = 'tasks'`)
+    .all();
   res.json(
     rows.map((t) => {
       const s = t.subject_type === 'mother' ? motherName.get(t.subject_id) : babyName.get(t.subject_id);
-      return { ...t, subject_name: s?.name ?? '—', room: s?.room ?? '—' };
+      return {
+        ...t,
+        subject_name: s?.name ?? '—',
+        room: s?.room ?? '—',
+        photos: taskPhotos.filter((p) => p.record_id === t.id),
+      };
     })
   );
 });
 
 app.post('/api/tasks', (req, res) => {
-  const { subject_type, subject_id, due_time, title, detail, created_by } = req.body;
+  const { subject_type, subject_id, due_time, title, detail, created_by, photos } = req.body;
   if (!subject_type || !subject_id || !title) {
     return res.status(400).json({ error: '对象与任务标题必填' });
   }
@@ -294,6 +304,7 @@ app.post('/api/tasks', (req, res) => {
     INSERT INTO care_tasks (subject_type, subject_id, due_time, title, detail, created_by)
     VALUES (?, ?, ?, ?, ?, ?)`)
     .run(subject_type, subject_id, due_time || nowIso(), title, detail ?? null, created_by ?? null);
+  savePhotos('tasks', r.lastInsertRowid, photos, created_by);
   res.status(201).json(db.prepare(`SELECT * FROM care_tasks WHERE id = ?`).get(r.lastInsertRowid));
 });
 
