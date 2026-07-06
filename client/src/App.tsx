@@ -8,6 +8,7 @@ import Tasks from './pages/Tasks';
 import Handover from './pages/Handover';
 import Admission from './pages/Admission';
 import Admin from './pages/Admin';
+import { APP_VERSION } from './version';
 
 function BottomNav() {
   const { t } = useI18n();
@@ -35,7 +36,9 @@ function Header() {
   const { lang, setLang, t, tv } = useI18n();
   return (
     <header className="app-header">
-      <div className="app-title">{t('app.title')}</div>
+      <div className="app-title">
+        {t('app.title')} <span className="app-ver">{APP_VERSION}</span>
+      </div>
       <nav className="app-nav">
         <NavLink to="/" end>{t('nav.overview')}</NavLink>
         <NavLink to="/tasks">{t('nav.tasks')}</NavLink>
