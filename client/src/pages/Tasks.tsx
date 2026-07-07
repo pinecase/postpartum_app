@@ -17,19 +17,68 @@ const TASK_TYPES = [
   '鼻泪管按摩', '晾臀', '补充剂/用药', '母婴同室', '喂奶时间', '洗澡记录', '其他',
 ];
 
-// 每种任务类型的常用细节，点选后填入说明，免去手动输入
+// 结构化填写项：每种任务类型对应独立的输入格子，保存时自动合成说明文字。
+// short 为合成文字用的中文短名（经 tv() 按界面语言翻译）；labelKey 为格子标题的 i18n 键。
+interface FieldDef {
+  id: string;
+  labelKey: string;
+  short: string;
+  kind: 'number' | 'select' | 'text';
+  unit?: string;
+  step?: string;
+  options?: string[];
+}
+
+const num = (id: string, labelKey: string, short: string, unit: string, step?: string): FieldDef =>
+  ({ id, labelKey, short, kind: 'number', unit, step });
+const sel = (id: string, labelKey: string, short: string, options: string[]): FieldDef =>
+  ({ id, labelKey, short, kind: 'select', options });
+
+const TYPE_FIELDS: Record<string, FieldDef[]> = {
+  '体征测量': [
+    num('temp', 'vitals.tempC', '体温', '°C', '0.1'),
+    num('weight', 'vitals.weightG', '体重', 'g'),
+    num('jaundice', 'vitals.jaundiceUnit', '黄疸', 'mg/dL', '0.1'),
+    num('hr', 'vitals.heartRateUnit', '心率', 'bpm'),
+    num('rr', 'vitals.respUnit', '呼吸', '/min'),
+  ],
+  '换尿布': [
+    sel('dtype', 'diapers.type', '类型', ['小便', '大便', '小便+大便']),
+    sel('consistency', 'diapers.consistency', '性状', ['糊状', '稀水样', '颗粒状', '成形']),
+    sel('color', 'diapers.stoolColor', '颜色', ['黄色', '黄绿色', '绿色', '墨绿色（胎便）', '灰白色']),
+  ],
+  '喂奶时间': [
+    sel('method', 'feeds.method', '方式', ['母乳亲喂', '瓶喂母乳', '配方奶', '混合喂养']),
+    num('amount', 'feeds.amountMl', '奶量', 'ml'),
+    num('duration', 'feeds.durationMin', '时长', 'min'),
+  ],
+  '脚部按摩': [
+    sel('side', 'tasks.side', '部位', ['双侧', '左脚', '右脚']),
+    num('duration', 'feeds.durationMin', '时长', 'min'),
+  ],
+  '鼻泪管按摩': [sel('side', 'tasks.side', '部位', ['双侧', '左眼', '右眼'])],
+  '晾臀': [num('duration', 'feeds.durationMin', '时长', 'min')],
+  '补充剂/用药': [
+    sel('med', 'tasks.med', '药品', ['维生素D', '益生菌', '退黄药物', '其他药物']),
+    { id: 'dose', labelKey: 'tasks.dose', short: '', kind: 'text' },
+  ],
+  '母婴同室': [num('duration', 'feeds.durationMin', '时长', 'min')],
+  '洗澡记录': [num('watertemp', 'tasks.waterTemp', '水温', '°C', '0.1')],
+};
+
+// 补充标注：不适合做成格子的定性内容，点选追加进说明
 const DETAIL_PRESETS: Record<string, string[]> = {
   '护理记录/观察': ['精神状态好', '睡眠安稳', '哭闹较多', '吐奶', '溢奶', '皮肤黄染', '皮疹', '脐部干燥'],
-  '换尿布': ['小便', '大便·糊状', '大便·稀', '尿布疹', '臀部护理', '涂护臀膏'],
-  '体征测量': ['体温', '体重', '黄疸', '心率', '呼吸'],
+  '换尿布': ['尿布疹', '臀部护理', '涂护臀膏'],
+  '体征测量': [],
   '汇总统计': ['今日喂养汇总', '今日大小便汇总', '今日体征汇总'],
   '宝宝拍照': ['日常照', '伤口/皮肤记录', '黄疸对比照'],
-  '脚部按摩': ['双侧', '左脚', '右脚', '10 分钟', '15 分钟'],
-  '鼻泪管按摩': ['双侧', '左眼', '右眼', '分泌物增多', '已清洁'],
-  '晾臀': ['10 分钟', '15 分钟', '红臀观察', '涂护臀膏'],
-  '补充剂/用药': ['维生素D', '益生菌', '退黄药物', '遵医嘱用药'],
-  '母婴同室': ['30 分钟', '1 小时', '2 小时', '哺乳指导'],
-  '喂奶时间': ['母乳亲喂', '瓶喂母乳', '配方奶', '拍嗝', '奶量记录'],
+  '脚部按摩': [],
+  '鼻泪管按摩': ['分泌物增多', '已清洁'],
+  '晾臀': ['红臀观察', '涂护臀膏'],
+  '补充剂/用药': ['遵医嘱用药'],
+  '母婴同室': ['哺乳指导'],
+  '喂奶时间': ['拍嗝'],
   '洗澡记录': ['洗澡', '抚触', '脐部护理', '游泳'],
   '其他': [],
 };
@@ -132,11 +181,17 @@ function TaskModal({
   const [mothers, setMothers] = useState<Mother[]>([]);
   const [babies, setBabies] = useState<(Baby & { mother_name?: string })[]>([]);
   const [subjectType, setSubjectType] = useState<'mother' | 'baby'>('baby');
-  const [taskType, setTaskType] = useState(TASK_TYPES[0]);
+  const [taskType, setTaskTypeState] = useState(TASK_TYPES[0]);
   const [detail, setDetail] = useState('');
+  const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [photos, setPhotos] = useState<PhotoDraft[]>([]);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+
+  const setTaskType = (type: string) => {
+    setTaskTypeState(type);
+    setFieldValues({}); // 切换类型清空已填格子
+  };
 
   // 点选快捷项：已存在则移除，不存在则追加到说明
   const toggleChip = (chipText: string) => {
@@ -166,11 +221,22 @@ function TaskModal({
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
+    // 已填格子合成说明前缀：数字带短名与单位，下拉直接用选项值，文本原样
+    const parts: string[] = [];
+    for (const f of TYPE_FIELDS[taskType] || []) {
+      const v = (fieldValues[f.id] || '').trim();
+      if (!v) continue;
+      if (f.kind === 'number') parts.push(`${tv(f.short)} ${v}${f.unit || ''}`);
+      else if (f.kind === 'select') parts.push(tv(v));
+      else parts.push(v);
+    }
+    const combinedDetail = [...parts, detail.trim()].filter(Boolean).join('、');
+
     const body: Record<string, unknown> = {
       subject_type: subjectType,
       subject_id: Number(fd.get('subject_id')),
       title: taskType === '其他' ? fd.get('title') : taskType,
-      detail: detail.trim() || null,
+      detail: combinedDetail || null,
       due_time: new Date(String(fd.get('due_time'))).toISOString(),
       created_by: createdBy,
     };
@@ -223,6 +289,30 @@ function TaskModal({
               <input name="title" required placeholder={t('tasks.titlePlaceholder')} />
             </div>
           )}
+          {(TYPE_FIELDS[taskType] || []).map((f) => (
+            <div className="field" key={f.id}>
+              <label>{t(f.labelKey)}</label>
+              {f.kind === 'select' ? (
+                <select
+                  value={fieldValues[f.id] || ''}
+                  onChange={(e) => setFieldValues((fv) => ({ ...fv, [f.id]: e.target.value }))}
+                >
+                  <option value="">—</option>
+                  {f.options!.map((o) => (
+                    <option key={o} value={o}>{tv(o)}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type={f.kind === 'number' ? 'number' : 'text'}
+                  step={f.step}
+                  placeholder={f.unit || ''}
+                  value={fieldValues[f.id] || ''}
+                  onChange={(e) => setFieldValues((fv) => ({ ...fv, [f.id]: e.target.value }))}
+                />
+              )}
+            </div>
+          ))}
           {DETAIL_PRESETS[taskType]?.length > 0 && (
             <div className="field full">
               <label>{t('tasks.quickDetail')}</label>
