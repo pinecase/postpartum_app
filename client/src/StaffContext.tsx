@@ -5,9 +5,15 @@ interface StaffCtx {
   staff: Staff[];
   current: string;
   setCurrent: (name: string) => void;
+  addStaff: (name: string, role: string) => Promise<void>;
 }
 
-const Ctx = createContext<StaffCtx>({ staff: [], current: '', setCurrent: () => {} });
+const Ctx = createContext<StaffCtx>({
+  staff: [],
+  current: '',
+  setCurrent: () => {},
+  addStaff: async () => {},
+});
 
 export function StaffProvider({ children }: { children: ReactNode }) {
   const [staff, setStaff] = useState<Staff[]>([]);
@@ -15,22 +21,30 @@ export function StaffProvider({ children }: { children: ReactNode }) {
     () => localStorage.getItem('current_staff') || ''
   );
 
+  const setCurrent = (name: string) => {
+    setCurrentState(name);
+    localStorage.setItem('current_staff', name);
+  };
+
   useEffect(() => {
     api.get<Staff[]>('/api/staff').then((list) => {
       setStaff(list);
-      if (list.length && !localStorage.getItem('current_staff')) {
+      const saved = localStorage.getItem('current_staff') || '';
+      // 记录人不在名单里（如刚清库）时回退到第一位
+      if (list.length && !list.some((s) => s.name === saved)) {
         setCurrentState(list[0].name);
         localStorage.setItem('current_staff', list[0].name);
       }
     });
   }, []);
 
-  const setCurrent = (name: string) => {
-    setCurrentState(name);
-    localStorage.setItem('current_staff', name);
+  const addStaff = async (name: string, role: string) => {
+    const created = await api.post<Staff>('/api/staff', { name, role });
+    setStaff((s) => [...s, created]);
+    setCurrent(created.name);
   };
 
-  return <Ctx.Provider value={{ staff, current, setCurrent }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ staff, current, setCurrent, addStaff }}>{children}</Ctx.Provider>;
 }
 
 export const useStaff = () => useContext(Ctx);

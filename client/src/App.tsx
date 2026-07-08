@@ -31,9 +31,28 @@ function BottomNav() {
   );
 }
 
+const ROLES = ['护士', '护士长', '月嫂', '医生'];
+
 function Header() {
-  const { staff, current, setCurrent } = useStaff();
+  const { staff, current, setCurrent, addStaff } = useStaff();
   const { lang, setLang, t, tv } = useI18n();
+
+  const onPick = async (value: string) => {
+    if (value !== '__add__') {
+      setCurrent(value);
+      return;
+    }
+    const name = window.prompt(t('header.staffNamePrompt'))?.trim();
+    if (!name) return;
+    const roleInput = window.prompt(t('header.staffRolePrompt'), ROLES[0])?.trim() || ROLES[0];
+    const role = ROLES.includes(roleInput) ? roleInput : ROLES[0];
+    try {
+      await addStaff(name, role);
+    } catch (e) {
+      window.alert((e as Error).message);
+    }
+  };
+
   return (
     <header className="app-header">
       <div className="app-title">
@@ -59,12 +78,14 @@ function Header() {
           ))}
         </div>
         {t('header.currentStaff')}
-        <select value={current} onChange={(e) => setCurrent(e.target.value)}>
+        <select value={current} onChange={(e) => onPick(e.target.value)}>
+          {staff.length === 0 && <option value="">—</option>}
           {staff.map((s) => (
             <option key={s.id} value={s.name}>
               {s.name}（{tv(s.role)}）
             </option>
           ))}
+          <option value="__add__">{t('header.addStaff')}</option>
         </select>
       </div>
     </header>
