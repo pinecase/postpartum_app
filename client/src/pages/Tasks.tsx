@@ -66,6 +66,88 @@ const TYPE_FIELDS: Record<string, FieldDef[]> = {
   '洗澡记录': [num('watertemp', 'tasks.waterTemp', '水温', '°C', '0.1')],
 };
 
+// 根据任务类型与已填内容，生成需要同步写入的护理记录（宝宝详情页可见）。
+// 返回 null 表示纯待办任务，不生成记录。
+interface SyncInput {
+  subjectType: 'mother' | 'baby';
+  subjectId: number;
+  taskType: string;
+  title: string;
+  fieldValues: Record<string, string>;
+  timeIso: string;
+  notes: string;
+  recordedBy: string;
+  photos?: { data: string; mime: string }[];
+}
+
+function buildRecordSync(s: SyncInput): { url: string; payload: Record<string, unknown> } | null {
+  const v = (k: string) => (s.fieldValues[k] || '').trim();
+  const n = (k: string) => (v(k) ? Number(v(k)) : null);
+  const hasAnyField = (TYPE_FIELDS[s.taskType] || []).some((f) => v(f.id));
+  const hasContent = hasAnyField || !!s.notes || !!s.photos?.length;
+  const common = {
+    time: s.timeIso,
+    notes: s.notes || null,
+    recorded_by: s.recordedBy,
+    ...(s.photos ? { photos: s.photos } : {}),
+  };
+
+  if (s.subjectType === 'mother') {
+    // 产妇仅体征测量同步到查房记录，其余类型保留为任务
+    if (s.taskType === '体征测量' && hasAnyField) {
+      return {
+        url: `/api/mothers/${s.subjectId}/vitals`,
+        payload: { ...common, temperature_c: n('temp'), pulse: n('hr') },
+      };
+    }
+    return null;
+  }
+
+  if (s.taskType === '体征测量' && hasAnyField) {
+    return {
+      url: `/api/babies/${s.subjectId}/vitals`,
+      payload: {
+        ...common,
+        temperature_c: n('temp'), weight_g: n('weight'), jaundice_mg_dl: n('jaundice'),
+        heart_rate: n('hr'), resp_rate: n('rr'),
+      },
+    };
+  }
+  if (s.taskType === '换尿布' && v('dtype')) {
+    const typeMap: Record<string, string> = { '小便': '尿', '大便': '便', '小便+大便': '尿+便' };
+    return {
+      url: `/api/babies/${s.subjectId}/diapers`,
+      payload: {
+        ...common,
+        type: typeMap[v('dtype')] || v('dtype'),
+        stool_consistency: v('consistency') || null,
+        stool_color: v('color') || null,
+      },
+    };
+  }
+  if (s.taskType === '喂奶时间' && v('method')) {
+    return {
+      url: `/api/babies/${s.subjectId}/feeds`,
+      payload: { ...common, method: v('method'), amount_ml: n('amount'), duration_min: n('duration') },
+    };
+  }
+  // 其余类型（洗澡/按摩/晾臀/用药/观察/拍照/自定义等）：有内容时记入护理项目
+  if (hasContent) {
+    const extraParts: string[] = [];
+    for (const f of TYPE_FIELDS[s.taskType] || []) {
+      const val = v(f.id);
+      if (!val) continue;
+      extraParts.push(f.kind === 'number' ? `${f.short} ${val}${f.unit || ''}` : val);
+    }
+    const notes = [...extraParts, s.notes].filter(Boolean).join('、');
+    return {
+      url: `/api/babies/${s.subjectId}/cares`,
+      payload: { ...common, care_type: s.title, notes: notes || null },
+    };
+  }
+  return null;
+}
+
 // 补充标注：不适合做成格子的定性内容，点选追加进说明
 const DETAIL_PRESETS: Record<string, string[]> = {
   '护理记录/观察': ['精神状态好', '睡眠安稳', '哭闹较多', '吐奶', '溢奶', '皮肤黄染', '皮疹', '脐部干燥'],
@@ -232,19 +314,34 @@ function TaskModal({
     }
     const combinedDetail = [...parts, detail.trim()].filter(Boolean).join('、');
 
+    const subjectId = Number(fd.get('subject_id'));
+    const timeIso = new Date(String(fd.get('due_time'))).toISOString();
+    const title = taskType === '其他' ? String(fd.get('title')) : taskType;
+    const photoPayload = photos.length ? photos.map((p) => ({ data: p.data, mime: p.mime })) : undefined;
+
+    // 同步计划：填了数据时，同时写入对应的护理记录表（宝宝详情页可见），
+    // 照片挂在记录上；纯待办（什么都没填）只建任务
+    const recordSync = buildRecordSync({
+      subjectType, subjectId, taskType, title, fieldValues, timeIso,
+      notes: detail.trim(), recordedBy: createdBy, photos: photoPayload,
+    });
+
     const body: Record<string, unknown> = {
       subject_type: subjectType,
-      subject_id: Number(fd.get('subject_id')),
-      title: taskType === '其他' ? fd.get('title') : taskType,
+      subject_id: subjectId,
+      title,
       detail: combinedDetail || null,
-      due_time: new Date(String(fd.get('due_time'))).toISOString(),
+      due_time: timeIso,
       created_by: createdBy,
     };
-    if (photos.length) body.photos = photos.map((p) => ({ data: p.data, mime: p.mime }));
+    // 有同步记录时照片挂记录；否则挂任务
+    if (photoPayload && !recordSync) body.photos = photoPayload;
+
     setBusy(true);
     setErr('');
     try {
       await api.post('/api/tasks', body);
+      if (recordSync) await api.post(recordSync.url, recordSync.payload);
       onSaved();
     } catch (e) {
       setErr((e as Error).message);
