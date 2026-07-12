@@ -7,8 +7,16 @@ export default function Handover() {
   const { current } = useStaff();
   const { t, tv } = useI18n();
   const [items, setItems] = useState<HandoverType[]>([]);
+  const [search, setSearch] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+
+  const kw = search.trim().toLowerCase();
+  const filtered = kw
+    ? items.filter((h) =>
+        [h.content, h.author, h.date, h.shift].some((s) => s.toLowerCase().includes(kw))
+      )
+    : items;
 
   const load = () => api.get<HandoverType[]>('/api/handovers').then(setItems);
   useEffect(() => {
@@ -52,7 +60,7 @@ export default function Handover() {
             <div className="field">
               <label>{t('handover.shift')}</label>
               <select name="shift" required>
-                {['白班', '夜班'].map((v) => (
+                {['AM班', 'PM班', 'MID班'].map((v) => (
                   <option key={v} value={v}>{tv(v)}</option>
                 ))}
               </select>
@@ -76,19 +84,27 @@ export default function Handover() {
       </div>
 
       <div className="card">
-        <h3>{t('handover.history')}</h3>
-        {items.map((h) => (
+        <h3>
+          {t('handover.history')}
+          <input
+            className="handover-search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t('handover.search')}
+          />
+        </h3>
+        {filtered.map((h) => (
           <div className="handover-item" key={h.id}>
             <div className="head">
               <span className="badge badge-room">{h.date}</span>
-              <span className={`badge ${h.shift === '夜班' ? 'badge-info' : 'badge-warning'}`}>{tv(h.shift)}</span>
+              <span className={`badge ${h.shift.includes('MID') || h.shift === '夜班' ? 'badge-info' : 'badge-warning'}`}>{tv(h.shift)}</span>
               <span>{h.author}</span>
               <span>· {t('handover.submittedAt')} {fmtTime(h.created_at)}</span>
             </div>
             <div style={{ whiteSpace: 'pre-wrap' }}>{h.content}</div>
           </div>
         ))}
-        {items.length === 0 && <div className="empty">{t('handover.empty')}</div>}
+        {filtered.length === 0 && <div className="empty">{t('handover.empty')}</div>}
       </div>
     </>
   );

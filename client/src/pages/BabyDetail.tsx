@@ -66,6 +66,12 @@ export default function BabyDetail() {
   if (error) return <div className="card">{t('common.loadFailed')}：{error}</div>;
   if (!data) return <div className="empty">{t('common.loading')}</div>;
 
+  const delRecord = async (type: Tab, recordId: number) => {
+    if (!window.confirm(t('common.confirmDelete'))) return;
+    await api.del(`/api/records/${type}/${recordId}`);
+    load();
+  };
+
   const latestWeight = data.vitals.find((v) => v.weight_g != null);
   const latestJaundice = data.vitals.find((v) => v.jaundice_mg_dl != null);
   const refsFor = (type: Tab, recordId: number): PhotoRef[] =>
@@ -189,7 +195,7 @@ export default function BabyDetail() {
                     <td>{f.amount_ml ? `${f.amount_ml} ml` : '—'}</td>
                     <td>{f.duration_min ? t('feeds.minutes', { n: f.duration_min }) : '—'}</td>
                     <td className="wrap">{f.notes || '—'} <PhotoBadge refs={refsFor('feeds', f.id)} /></td>
-                    <td>{f.recorded_by || '—'}</td>
+                    <td>{f.recorded_by || '—'} <button className="row-del" onClick={() => delRecord('feeds', f.id)}>✕</button></td>
                   </tr>
                 ))}
                 {data.feeds.length === 0 && <tr><td colSpan={6} className="empty">{t('common.none')}</td></tr>}
@@ -212,7 +218,7 @@ export default function BabyDetail() {
                     <td>{tv(d.stool_color)}</td>
                     <td>{tv(d.stool_consistency)}</td>
                     <td className="wrap">{d.notes || '—'} <PhotoBadge refs={refsFor('diapers', d.id)} /></td>
-                    <td>{d.recorded_by || '—'}</td>
+                    <td>{d.recorded_by || '—'} <button className="row-del" onClick={() => delRecord('diapers', d.id)}>✕</button></td>
                   </tr>
                 ))}
                 {data.diapers.length === 0 && <tr><td colSpan={6} className="empty">{t('common.none')}</td></tr>}
@@ -225,7 +231,7 @@ export default function BabyDetail() {
                 <tr>
                   <th>{t('common.time')}</th><th>{t('vitals.temp')}</th><th>{t('vitals.weight')}</th>
                   <th>{t('vitals.jaundice')}</th><th>{t('vitals.heartRate')}</th><th>{t('vitals.resp')}</th>
-                  <th>{t('common.recordedBy')}</th>
+                  <th>SpO₂</th><th>{t('common.recordedBy')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -236,11 +242,12 @@ export default function BabyDetail() {
                     <td>{v.weight_g != null ? `${v.weight_g} g` : '—'}</td>
                     <td>{v.jaundice_mg_dl != null ? `${v.jaundice_mg_dl} mg/dL` : '—'}</td>
                     <td>{v.heart_rate ?? '—'}</td>
-                    <td>{v.resp_rate ?? '—'} <PhotoBadge refs={refsFor('vitals', v.id)} /></td>
-                    <td>{v.recorded_by || '—'}</td>
+                    <td>{v.resp_rate ?? '—'}</td>
+                    <td>{v.spo2 != null ? `${v.spo2}%` : '—'} <PhotoBadge refs={refsFor('vitals', v.id)} /></td>
+                    <td>{v.recorded_by || '—'} <button className="row-del" onClick={() => delRecord('vitals', v.id)}>✕</button></td>
                   </tr>
                 ))}
-                {data.vitals.length === 0 && <tr><td colSpan={7} className="empty">{t('common.none')}</td></tr>}
+                {data.vitals.length === 0 && <tr><td colSpan={8} className="empty">{t('common.none')}</td></tr>}
               </tbody>
             </table>
           )}
@@ -258,7 +265,7 @@ export default function BabyDetail() {
                     <td>{fmtTime(c.time)}</td>
                     <td>{tv(c.care_type)}</td>
                     <td className="wrap">{c.notes || '—'} <PhotoBadge refs={refsFor('cares', c.id)} /></td>
-                    <td>{c.recorded_by || '—'}</td>
+                    <td>{c.recorded_by || '—'} <button className="row-del" onClick={() => delRecord('cares', c.id)}>✕</button></td>
                   </tr>
                 ))}
                 {data.cares.length === 0 && <tr><td colSpan={4} className="empty">{t('common.none')}</td></tr>}

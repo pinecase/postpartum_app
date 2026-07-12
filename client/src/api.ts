@@ -64,6 +64,7 @@ export interface BabyVital {
   jaundice_mg_dl: number | null;
   heart_rate: number | null;
   resp_rate: number | null;
+  spo2: number | null;
   notes: string | null;
   recorded_by: string | null;
 }
@@ -106,6 +107,7 @@ export interface CareTask {
   created_by: string | null;
   completed_by: string | null;
   completed_at: string | null;
+  internal_note: string | null;
   subject_name?: string;
   room?: string;
   photos?: PhotoRef[];
@@ -193,6 +195,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     }).then((r) => handle<T>(r)),
+  del: <T>(url: string) => fetch(url, { method: 'DELETE' }).then((r) => handle<T>(r)),
 };
 
 export function fmtTime(t: string | null | undefined): string {

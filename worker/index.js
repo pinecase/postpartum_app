@@ -282,11 +282,11 @@ app.post('/api/babies/:id/vitals', async (c) => {
   if (!(await babyExists(c.env.DB, id))) return err(c, 404, '未找到宝宝');
   const b = await c.req.json();
   const r = await c.env.DB.prepare(
-    `INSERT INTO baby_vitals (baby_id, time, temperature_c, weight_g, jaundice_mg_dl, heart_rate, resp_rate, notes, recorded_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO baby_vitals (baby_id, time, temperature_c, weight_g, jaundice_mg_dl, heart_rate, resp_rate, spo2, notes, recorded_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
     .bind(id, b.time || nowIso(), b.temperature_c ?? null, b.weight_g ?? null, b.jaundice_mg_dl ?? null,
-      b.heart_rate ?? null, b.resp_rate ?? null, b.notes ?? null, b.recorded_by ?? null)
+      b.heart_rate ?? null, b.resp_rate ?? null, b.spo2 ?? null, b.notes ?? null, b.recorded_by ?? null)
     .run();
   await savePhotos(c.env.DB, 'vitals', r.meta.last_row_id, b.photos, b.recorded_by);
   const row = await c.env.DB.prepare(`SELECT * FROM baby_vitals WHERE id = ?`).bind(r.meta.last_row_id).first();
@@ -340,9 +340,9 @@ app.post('/api/tasks', async (c) => {
   const b = await c.req.json();
   if (!b.subject_type || !b.subject_id || !b.title) return err(c, 400, '对象与任务标题必填');
   const r = await c.env.DB.prepare(
-    `INSERT INTO care_tasks (subject_type, subject_id, due_time, title, detail, created_by) VALUES (?, ?, ?, ?, ?, ?)`
+    `INSERT INTO care_tasks (subject_type, subject_id, due_time, title, detail, created_by, internal_note) VALUES (?, ?, ?, ?, ?, ?, ?)`
   )
-    .bind(b.subject_type, b.subject_id, b.due_time || nowIso(), b.title, b.detail ?? null, b.created_by ?? null)
+    .bind(b.subject_type, b.subject_id, b.due_time || nowIso(), b.title, b.detail ?? null, b.created_by ?? null, b.internal_note ?? null)
     .run();
   await savePhotos(c.env.DB, 'tasks', r.meta.last_row_id, b.photos, b.created_by);
   const row = await c.env.DB.prepare(`SELECT * FROM care_tasks WHERE id = ?`).bind(r.meta.last_row_id).first();
@@ -365,6 +365,34 @@ app.patch('/api/tasks/:id', async (c) => {
   }
   const row = await c.env.DB.prepare(`SELECT * FROM care_tasks WHERE id = ?`).bind(t.id).first();
   return c.json(row);
+});
+
+// ---------- 删除记录/任务（删错重录） ----------
+const RECORD_TABLES = {
+  feeds: 'baby_feeds',
+  diapers: 'baby_diapers',
+  vitals: 'baby_vitals',
+  cares: 'baby_cares',
+  mother_vitals: 'mother_vitals',
+};
+
+app.delete('/api/records/:type/:id', async (c) => {
+  const table = RECORD_TABLES[c.req.param('type')];
+  if (!table) return err(c, 400, '未知记录类型');
+  const id = c.req.param('id');
+  await c.env.DB.prepare(`DELETE FROM photos WHERE record_type = ? AND record_id = ?`)
+    .bind(c.req.param('type'), id).run();
+  const r = await c.env.DB.prepare(`DELETE FROM ${table} WHERE id = ?`).bind(id).run();
+  if (!r.meta.changes) return err(c, 404, '未找到记录');
+  return c.json({ ok: true });
+});
+
+app.delete('/api/tasks/:id', async (c) => {
+  const id = c.req.param('id');
+  await c.env.DB.prepare(`DELETE FROM photos WHERE record_type = 'tasks' AND record_id = ?`).bind(id).run();
+  const r = await c.env.DB.prepare(`DELETE FROM care_tasks WHERE id = ?`).bind(id).run();
+  if (!r.meta.changes) return err(c, 404, '未找到任务');
+  return c.json({ ok: true });
 });
 
 // ---------- 交接班 ----------

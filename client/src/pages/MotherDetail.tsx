@@ -43,6 +43,12 @@ export default function MotherDetail() {
       }));
   }, [data, seriesTemp, seriesSys, seriesDia]);
 
+  const delRecord = async (recordId: number) => {
+    if (!window.confirm(t('common.confirmDelete'))) return;
+    await api.del(`/api/records/mother_vitals/${recordId}`);
+    load();
+  };
+
   const discharge = async () => {
     if (!data) return;
     if (!window.confirm(t('mother.confirmDischarge', { name: data.name }))) return;
@@ -153,7 +159,7 @@ export default function MotherDetail() {
                     {v.notes || '—'}{' '}
                     <PhotoBadge refs={data.photos.filter((p) => p.record_type === 'mother_vitals' && p.record_id === v.id)} />
                   </td>
-                  <td>{v.recorded_by || '—'}</td>
+                  <td>{v.recorded_by || '—'} <button className="row-del" onClick={() => delRecord(v.id)}>✕</button></td>
                 </tr>
               ))}
               {data.vitals.length === 0 && <tr><td colSpan={11} className="empty">{t('common.none')}</td></tr>}

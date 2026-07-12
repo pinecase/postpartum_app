@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS baby_vitals (
   jaundice_mg_dl REAL,
   heart_rate INTEGER,
   resp_rate INTEGER,
+  spo2 INTEGER,
   notes TEXT,
   recorded_by TEXT
 );
@@ -107,7 +108,8 @@ CREATE TABLE IF NOT EXISTS care_tasks (
   status TEXT NOT NULL DEFAULT '待办',
   created_by TEXT,
   completed_by TEXT,
-  completed_at TEXT
+  completed_at TEXT,
+  internal_note TEXT
 );
 
 CREATE TABLE IF NOT EXISTS handovers (

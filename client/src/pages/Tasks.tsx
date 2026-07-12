@@ -1,6 +1,6 @@
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api, fmtTime, localDatetimeValue, CareTask, Mother, Baby } from '../api';
+import { api, fmtTime, CareTask, Mother, Baby, BabyDetailData } from '../api';
 import { useStaff } from '../StaffContext';
 import { useI18n } from '../i18n';
 import Modal from '../components/Modal';
@@ -11,63 +11,86 @@ import VoiceInput from '../components/VoiceInput';
 const FILTERS = ['待办', '已完成', '全部'] as const;
 type Filter = (typeof FILTERS)[number];
 
-// 任务类型下拉选项（中文为存储值，显示时按语言翻译）；「其他」时手动输入标题
+// 任务类型（中文为存储值，显示时按语言翻译）；「其他」时手动输入标题
 const TASK_TYPES = [
-  '护理记录/观察', '换尿布', '体征测量', '汇总统计', '宝宝拍照', '脚部按摩',
-  '鼻泪管按摩', '晾臀', '补充剂/用药', '母婴同室', '喂奶时间', '洗澡记录', '其他',
+  '喂奶时间', '换尿布', '体征测量', '洗澡记录', '晾臀', '母婴同室',
+  '脚部按摩', '鼻泪管按摩', '补充剂/用药', '护理记录/观察', '汇总统计', '宝宝拍照', '其他',
 ];
 
-// 结构化填写项：每种任务类型对应独立的输入格子，保存时自动合成说明文字。
-// short 为合成文字用的中文短名（经 tv() 按界面语言翻译）；labelKey 为格子标题的 i18n 键。
+// 结构化填写项。short 为合成文字用的中文短名（经 tv() 翻译）；
+// showIf 控制字段随其它选择动态显示（如亲喂才出现哺乳侧）。
 interface FieldDef {
   id: string;
   labelKey: string;
   short: string;
-  kind: 'number' | 'select' | 'text';
+  kind: 'number' | 'select' | 'text' | 'time';
   unit?: string;
   step?: string;
   options?: string[];
+  showIf?: (fv: Record<string, string>) => boolean;
 }
 
-const num = (id: string, labelKey: string, short: string, unit: string, step?: string): FieldDef =>
-  ({ id, labelKey, short, kind: 'number', unit, step });
-const sel = (id: string, labelKey: string, short: string, options: string[]): FieldDef =>
-  ({ id, labelKey, short, kind: 'select', options });
+const num = (id: string, labelKey: string, short: string, unit: string, step?: string, showIf?: FieldDef['showIf']): FieldDef =>
+  ({ id, labelKey, short, kind: 'number', unit, step, showIf });
+const sel = (id: string, labelKey: string, short: string, options: string[], showIf?: FieldDef['showIf']): FieldDef =>
+  ({ id, labelKey, short, kind: 'select', options, showIf });
+const tim = (id: string, labelKey: string, short: string): FieldDef =>
+  ({ id, labelKey, short, kind: 'time' });
+
+const isBF = (fv: Record<string, string>) => fv.method === '母乳亲喂';
+const isMixed = (fv: Record<string, string>) => fv.method === '混合喂养';
+const isBottle = (fv: Record<string, string>) => fv.method === '瓶喂母乳' || fv.method === '配方奶';
+const hasStool = (fv: Record<string, string>) => !!fv.stool && fv.stool !== '无';
 
 const TYPE_FIELDS: Record<string, FieldDef[]> = {
-  '体征测量': [
-    num('temp', 'vitals.tempC', '体温', '°C', '0.1'),
-    num('weight', 'vitals.weightG', '体重', 'g'),
-    num('jaundice', 'vitals.jaundiceUnit', '黄疸', 'mg/dL', '0.1'),
-    num('hr', 'vitals.heartRateUnit', '心率', 'bpm'),
-    num('rr', 'vitals.respUnit', '呼吸', '/min'),
-  ],
-  '换尿布': [
-    sel('dtype', 'diapers.type', '类型', ['小便', '大便', '小便+大便']),
-    sel('consistency', 'diapers.consistency', '性状', ['糊状', '稀水样', '颗粒状', '成形']),
-    sel('color', 'diapers.stoolColor', '颜色', ['黄色', '黄绿色', '绿色', '墨绿色（胎便）', '灰白色']),
-  ],
   '喂奶时间': [
     sel('method', 'feeds.method', '方式', ['母乳亲喂', '瓶喂母乳', '配方奶', '混合喂养']),
-    num('amount', 'feeds.amountMl', '奶量', 'ml'),
-    num('duration', 'feeds.durationMin', '时长', 'min'),
+    sel('side', 'tasks.sideBreast', '哺乳侧', ['左', '右', '双侧'], isBF),
+    sel('position', 'tasks.position', '姿势', ['摇篮式', '橄榄球式', '侧躺式', '半躺式'], isBF),
+    num('duration', 'feeds.durationMin', '时长', 'min', undefined, isBF),
+    num('bm', 'tasks.bmMl', '母乳', 'ml', undefined, isMixed),
+    num('fm', 'tasks.fmMl', '配方奶', 'ml', undefined, isMixed),
+    num('amount', 'feeds.amountMl', '奶量', 'ml', undefined, isBottle),
+    num('temp', 'vitals.tempC', '体温', '°C', '0.1'),
+    num('jaundice', 'vitals.jaundiceUnit', '黄疸', 'mg/dL', '0.1'),
   ],
-  '脚部按摩': [
-    sel('side', 'tasks.side', '部位', ['双侧', '左脚', '右脚']),
-    num('duration', 'feeds.durationMin', '时长', 'min'),
+  '换尿布': [
+    sel('urine', 'tasks.urineAmt', '小便量', ['无', '少', '中', '多']),
+    sel('stool', 'tasks.stoolAmt', '大便量', ['无', '少', '中', '多']),
+    sel('consistency', 'diapers.consistency', '性状', ['正常', '偏硬', '水样', '成形', '有异味'], hasStool),
+    sel('color', 'diapers.stoolColor', '颜色', ['黄色', '黄绿色', '绿色', '墨绿色（胎便）', '灰白色'], hasStool),
   ],
-  '鼻泪管按摩': [sel('side', 'tasks.side', '部位', ['双侧', '左眼', '右眼'])],
-  '晾臀': [num('duration', 'feeds.durationMin', '时长', 'min')],
-  '补充剂/用药': [
-    sel('med', 'tasks.med', '药品', ['维生素D', '益生菌', '退黄药物', '其他药物']),
-    { id: 'dose', labelKey: 'tasks.dose', short: '', kind: 'text' },
+  '体征测量': [
+    num('hr', 'vitals.heartRateUnit', '心率', 'bpm'),
+    num('rr', 'vitals.respUnit', '呼吸', '/min'),
+    num('spo2', 'tasks.spo2', 'SpO₂', '%'),
   ],
-  '母婴同室': [num('duration', 'feeds.durationMin', '时长', 'min')],
-  '洗澡记录': [num('watertemp', 'tasks.waterTemp', '水温', '°C', '0.1')],
+  '洗澡记录': [
+    num('weight', 'vitals.weightG', '体重', 'g'),
+    num('jaundice', 'vitals.jaundiceUnit', '黄疸', 'mg/dL', '0.1'),
+  ],
+  '晾臀': [tim('start', 'tasks.startTime', '开始'), tim('end', 'tasks.endTime', '结束')],
+  '母婴同室': [sel('inout', 'tasks.inout', '入/出', ['入室', '出室'])],
 };
 
-// 根据任务类型与已填内容，生成需要同步写入的护理记录（宝宝详情页可见）。
-// 返回 null 表示纯待办任务，不生成记录。
+// 补充标注：定性内容点选填入说明
+const DETAIL_PRESETS: Record<string, string[]> = {
+  '喂奶时间': ['拍嗝', '吐奶', '溢奶', '小便', '大便', '腹部按摩'],
+  '换尿布': ['晾臀', '尿布疹', '涂护臀膏'],
+  '体征测量': [],
+  '洗澡记录': ['吐奶', '口腔清洁', '鼻腔清洁', '眼部清洁', '耳部清洁', '脐部正常', '脐部红肿', '腹部按摩', 'Jaundice Bath', 'JYH Bath', 'Beauty Bath', 'Bath Class'],
+  '晾臀': ['红臀观察', '涂护臀膏'],
+  '母婴同室': ['Review', '协助亲喂', '瓶喂 1 set', '换尿布 1 set', '哄睡教学', '办护照', 'SG Baby', 'Prayer'],
+  '脚部按摩': ['已完成'],
+  '鼻泪管按摩': ['已完成', '分泌物增多', '已清洁'],
+  '补充剂/用药': ['维生素D', '益生菌', '退黄药物', '遵医嘱用药'],
+  '护理记录/观察': ['精神状态好', '睡眠安稳', '哭闹较多', '吐奶', '溢奶', '皮肤黄染', '皮疹', '脐部干燥'],
+  '汇总统计': [],
+  '宝宝拍照': ['日常照', '伤口/皮肤记录', '黄疸对比照'],
+  '其他': [],
+};
+
+// 根据任务类型与已填内容生成需同步写入的护理记录（可多条）。
 interface SyncInput {
   subjectType: 'mother' | 'baby';
   subjectId: number;
@@ -80,90 +103,98 @@ interface SyncInput {
   photos?: { data: string; mime: string }[];
 }
 
-function buildRecordSync(s: SyncInput): { url: string; payload: Record<string, unknown> } | null {
+function buildRecordSyncs(s: SyncInput): { url: string; payload: Record<string, unknown> }[] {
   const v = (k: string) => (s.fieldValues[k] || '').trim();
   const n = (k: string) => (v(k) ? Number(v(k)) : null);
-  const hasAnyField = (TYPE_FIELDS[s.taskType] || []).some((f) => v(f.id));
+  const visible = (TYPE_FIELDS[s.taskType] || []).filter((f) => !f.showIf || f.showIf(s.fieldValues));
+  const hasAnyField = visible.some((f) => v(f.id) && v(f.id) !== '无');
   const hasContent = hasAnyField || !!s.notes || !!s.photos?.length;
-  const common = {
-    time: s.timeIso,
-    notes: s.notes || null,
-    recorded_by: s.recordedBy,
-    ...(s.photos ? { photos: s.photos } : {}),
-  };
+  const base = { time: s.timeIso, recorded_by: s.recordedBy };
+  const out: { url: string; payload: Record<string, unknown> }[] = [];
 
   if (s.subjectType === 'mother') {
-    // 产妇仅体征测量同步到查房记录，其余类型保留为任务
     if (s.taskType === '体征测量' && hasAnyField) {
-      return {
+      out.push({
         url: `/api/mothers/${s.subjectId}/vitals`,
-        payload: { ...common, temperature_c: n('temp'), pulse: n('hr') },
-      };
+        payload: { ...base, pulse: n('hr'), notes: s.notes || null, ...(s.photos ? { photos: s.photos } : {}) },
+      });
     }
-    return null;
+    return out;
   }
 
-  if (s.taskType === '体征测量' && hasAnyField) {
-    return {
-      url: `/api/babies/${s.subjectId}/vitals`,
-      payload: {
-        ...common,
-        temperature_c: n('temp'), weight_g: n('weight'), jaundice_mg_dl: n('jaundice'),
-        heart_rate: n('hr'), resp_rate: n('rr'),
-      },
-    };
-  }
-  if (s.taskType === '换尿布' && v('dtype')) {
-    const typeMap: Record<string, string> = { '小便': '尿', '大便': '便', '小便+大便': '尿+便' };
-    return {
-      url: `/api/babies/${s.subjectId}/diapers`,
-      payload: {
-        ...common,
-        type: typeMap[v('dtype')] || v('dtype'),
-        stool_consistency: v('consistency') || null,
-        stool_color: v('color') || null,
-      },
-    };
-  }
+  const B = (p: string) => `/api/babies/${s.subjectId}/${p}`;
+
   if (s.taskType === '喂奶时间' && v('method')) {
-    return {
-      url: `/api/babies/${s.subjectId}/feeds`,
-      payload: { ...common, method: v('method'), amount_ml: n('amount'), duration_min: n('duration') },
-    };
-  }
-  // 其余类型（洗澡/按摩/晾臀/用药/观察/拍照/自定义等）：有内容时记入护理项目
-  if (hasContent) {
-    const extraParts: string[] = [];
-    for (const f of TYPE_FIELDS[s.taskType] || []) {
-      const val = v(f.id);
-      if (!val) continue;
-      extraParts.push(f.kind === 'number' ? `${f.short} ${val}${f.unit || ''}` : val);
+    const extra: string[] = [];
+    if (v('side')) extra.push(v('side'));
+    if (v('position')) extra.push(v('position'));
+    if (v('bm')) extra.push(`母乳 ${v('bm')}ml`);
+    if (v('fm')) extra.push(`配方奶 ${v('fm')}ml`);
+    const amount = v('method') === '混合喂养'
+      ? (Number(v('bm') || 0) + Number(v('fm') || 0)) || null
+      : n('amount');
+    out.push({
+      url: B('feeds'),
+      payload: {
+        ...base, method: v('method'), amount_ml: amount, duration_min: n('duration'),
+        notes: [...extra, s.notes].filter(Boolean).join('、') || null,
+      },
+    });
+    if (v('temp') || v('jaundice')) {
+      out.push({ url: B('vitals'), payload: { ...base, temperature_c: n('temp'), jaundice_mg_dl: n('jaundice') } });
     }
-    const notes = [...extraParts, s.notes].filter(Boolean).join('、');
-    return {
-      url: `/api/babies/${s.subjectId}/cares`,
-      payload: { ...common, care_type: s.title, notes: notes || null },
-    };
+    const urine = s.notes.includes('小便');
+    const stool = s.notes.includes('大便');
+    if (urine || stool) {
+      out.push({
+        url: B('diapers'),
+        payload: { ...base, type: urine && stool ? '尿+便' : urine ? '尿' : '便' },
+      });
+    }
+  } else if (s.taskType === '换尿布' && ((v('urine') && v('urine') !== '无') || hasStool(s.fieldValues))) {
+    const urine = v('urine') && v('urine') !== '无';
+    const stool = hasStool(s.fieldValues);
+    const amt: string[] = [];
+    if (urine) amt.push(`小便·${v('urine')}`);
+    if (stool) amt.push(`大便·${v('stool')}`);
+    out.push({
+      url: B('diapers'),
+      payload: {
+        ...base,
+        type: urine && stool ? '尿+便' : urine ? '尿' : '便',
+        stool_consistency: stool ? v('consistency') || null : null,
+        stool_color: stool ? v('color') || null : null,
+        notes: [...amt, s.notes].filter(Boolean).join('、') || null,
+      },
+    });
+  } else if (s.taskType === '体征测量' && hasAnyField) {
+    out.push({
+      url: B('vitals'),
+      payload: { ...base, heart_rate: n('hr'), resp_rate: n('rr'), spo2: n('spo2'), notes: s.notes || null },
+    });
+  } else if (s.taskType === '洗澡记录' && hasContent) {
+    out.push({ url: B('cares'), payload: { ...base, care_type: s.title, notes: s.notes || null } });
+    if (v('weight') || v('jaundice')) {
+      out.push({ url: B('vitals'), payload: { ...base, weight_g: n('weight'), jaundice_mg_dl: n('jaundice') } });
+    }
+  } else if (hasContent) {
+    const extraParts: string[] = [];
+    for (const f of visible) {
+      const val = v(f.id);
+      if (!val || val === '无') continue;
+      if (f.kind === 'number') extraParts.push(`${f.short} ${val}${f.unit || ''}`);
+      else if (f.kind === 'time') extraParts.push(`${f.short} ${val}`);
+      else extraParts.push(val);
+    }
+    out.push({
+      url: B('cares'),
+      payload: { ...base, care_type: s.title, notes: [...extraParts, s.notes].filter(Boolean).join('、') || null },
+    });
   }
-  return null;
-}
 
-// 补充标注：不适合做成格子的定性内容，点选追加进说明
-const DETAIL_PRESETS: Record<string, string[]> = {
-  '护理记录/观察': ['精神状态好', '睡眠安稳', '哭闹较多', '吐奶', '溢奶', '皮肤黄染', '皮疹', '脐部干燥'],
-  '换尿布': ['尿布疹', '臀部护理', '涂护臀膏'],
-  '体征测量': [],
-  '汇总统计': ['今日喂养汇总', '今日大小便汇总', '今日体征汇总'],
-  '宝宝拍照': ['日常照', '伤口/皮肤记录', '黄疸对比照'],
-  '脚部按摩': [],
-  '鼻泪管按摩': ['分泌物增多', '已清洁'],
-  '晾臀': ['红臀观察', '涂护臀膏'],
-  '补充剂/用药': ['遵医嘱用药'],
-  '母婴同室': ['哺乳指导'],
-  '喂奶时间': ['拍嗝'],
-  '洗澡记录': ['洗澡', '抚触', '脐部护理', '游泳'],
-  '其他': [],
-};
+  if (out.length && s.photos) out[0].payload.photos = s.photos;
+  return out;
+}
 
 export default function Tasks() {
   const { current } = useStaff();
@@ -183,6 +214,12 @@ export default function Tasks() {
 
   const complete = async (tk: CareTask) => {
     await api.patch(`/api/tasks/${tk.id}`, { status: '已完成', completed_by: current });
+    load();
+  };
+
+  const remove = async (tk: CareTask) => {
+    if (!window.confirm(t('common.confirmDelete'))) return;
+    await api.del(`/api/tasks/${tk.id}`);
     load();
   };
 
@@ -224,6 +261,7 @@ export default function Tasks() {
             </Link>
             <span className="title">{tv(tk.title)}</span>
             {tk.detail && <span className="meta">{tk.detail}</span>}
+            {tk.internal_note && <span className="meta">🔒 {tk.internal_note}</span>}
             {tk.photos && tk.photos.length > 0 && <PhotoBadge refs={tk.photos} />}
             <span className="spacer" />
             {tk.status === '已完成' ? (
@@ -233,6 +271,7 @@ export default function Tasks() {
             ) : (
               <button className="btn btn-sm" onClick={() => complete(tk)}>{t('tasks.complete')}</button>
             )}
+            <button className="btn btn-sm" title={t('tasks.deleteTask')} onClick={() => remove(tk)}>✕</button>
           </div>
         ))}
         {tasks.length === 0 && <div className="empty">{t('tasks.empty')}</div>}
@@ -252,6 +291,8 @@ export default function Tasks() {
   );
 }
 
+const pad = (x: number) => String(x).padStart(2, '0');
+
 function TaskModal({
   createdBy, onClose, onSaved,
 }: {
@@ -261,31 +302,29 @@ function TaskModal({
 }) {
   const { t, tv } = useI18n();
   const [mothers, setMothers] = useState<Mother[]>([]);
-  const [babies, setBabies] = useState<(Baby & { mother_name?: string })[]>([]);
+  const [babies, setBabies] = useState<Baby[]>([]);
   const [subjectType, setSubjectType] = useState<'mother' | 'baby'>('baby');
+  const [subjectId, setSubjectId] = useState<number>(0);
   const [taskType, setTaskTypeState] = useState(TASK_TYPES[0]);
   const [detail, setDetail] = useState('');
+  const [internalNote, setInternalNote] = useState('');
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [photos, setPhotos] = useState<PhotoDraft[]>([]);
+  const now = new Date();
+  const [dueTime, setDueTime] = useState(`${pad(now.getHours())}:${pad(now.getMinutes())}`);
+  const [dueDate, setDueDate] = useState(
+    `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+  );
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  // 亲喂计时器
+  const [timerStart, setTimerStart] = useState<number | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const setTaskType = (type: string) => {
     setTaskTypeState(type);
-    setFieldValues({}); // 切换类型清空已填格子
-  };
-
-  // 点选快捷项：已存在则移除，不存在则追加到说明
-  const toggleChip = (chipText: string) => {
-    setDetail((d) => {
-      if (d.includes(chipText)) {
-        return d
-          .split('、')
-          .filter((part) => part.trim() !== chipText)
-          .join('、');
-      }
-      return d ? `${d}、${chipText}` : chipText;
-    });
+    setFieldValues({});
   };
 
   useEffect(() => {
@@ -293,35 +332,92 @@ function TaskModal({
       setMothers(ms);
       const all: Baby[] = [];
       for (const m of ms) {
-        const detail = await api.get<Mother & { babies: Baby[] }>(`/api/mothers/${m.id}`);
-        all.push(...detail.babies.filter((b) => b.status === '在住'));
+        const d = await api.get<Mother & { babies: Baby[] }>(`/api/mothers/${m.id}`);
+        all.push(...d.babies.filter((b) => b.status === '在住'));
       }
       setBabies(all);
+      if (all.length) setSubjectId(all[0].id);
+      else if (ms.length) setSubjectId(ms[0].id);
     });
   }, []);
+
+  useEffect(() => {
+    const list = subjectType === 'baby' ? babies : mothers;
+    if (list.length && !list.some((s) => s.id === subjectId)) setSubjectId(list[0].id);
+  }, [subjectType, babies, mothers, subjectId]);
+
+  // 汇总统计：自动结算当日数据填入说明
+  useEffect(() => {
+    if (taskType !== '汇总统计' || subjectType !== 'baby' || !subjectId) return;
+    api.get<BabyDetailData>(`/api/babies/${subjectId}`).then((b) => {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const isToday = (time: string) => new Date(time) >= today;
+      const feeds = b.feeds.filter((f) => isToday(f.time));
+      const milk = feeds.reduce((s, f) => s + (f.amount_ml || 0), 0);
+      const diapers = b.diapers.filter((d) => isToday(d.time));
+      const urine = diapers.filter((d) => d.type.includes('尿')).length;
+      const stool = diapers.filter((d) => d.type.includes('便')).length;
+      const latestV = b.vitals[0];
+      const parts = [
+        `${tv('今日喂养汇总')}: ${feeds.length}x / ${milk}ml`,
+        `${tv('小便')} ${urine}x`,
+        `${tv('大便')} ${stool}x`,
+      ];
+      if (latestV?.temperature_c != null) parts.push(`${tv('体温')} ${latestV.temperature_c}°C`);
+      if (latestV?.weight_g != null) parts.push(`${tv('体重')} ${latestV.weight_g}g`);
+      if (latestV?.jaundice_mg_dl != null) parts.push(`${tv('黄疸')} ${latestV.jaundice_mg_dl}mg/dL`);
+      setDetail(parts.join('、'));
+    });
+  }, [taskType, subjectType, subjectId, tv]);
+
+  useEffect(() => () => {
+    if (timerRef.current) clearInterval(timerRef.current);
+  }, []);
+
+  const toggleTimer = () => {
+    if (timerStart == null) {
+      const start = Date.now();
+      setTimerStart(start);
+      setElapsed(0);
+      timerRef.current = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current);
+      const mins = Math.max(1, Math.round((Date.now() - timerStart) / 60000));
+      setFieldValues((fv) => ({ ...fv, duration: String(mins) }));
+      setTimerStart(null);
+    }
+  };
+
+  const toggleChip = (chipText: string) => {
+    setDetail((d) => {
+      if (d.includes(chipText)) {
+        return d.split('、').filter((part) => part.trim() !== chipText).join('、');
+      }
+      return d ? `${d}、${chipText}` : chipText;
+    });
+  };
+
+  const visibleFields = (TYPE_FIELDS[taskType] || []).filter((f) => !f.showIf || f.showIf(fieldValues));
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
-    // 已填格子合成说明前缀：数字带短名与单位，下拉直接用选项值，文本原样
     const parts: string[] = [];
-    for (const f of TYPE_FIELDS[taskType] || []) {
+    for (const f of visibleFields) {
       const v = (fieldValues[f.id] || '').trim();
-      if (!v) continue;
+      if (!v || v === '无') continue;
       if (f.kind === 'number') parts.push(`${tv(f.short)} ${v}${f.unit || ''}`);
+      else if (f.kind === 'time') parts.push(`${tv(f.short)} ${v}`);
       else if (f.kind === 'select') parts.push(tv(v));
       else parts.push(v);
     }
     const combinedDetail = [...parts, detail.trim()].filter(Boolean).join('、');
-
-    const subjectId = Number(fd.get('subject_id'));
-    const timeIso = new Date(String(fd.get('due_time'))).toISOString();
+    const timeIso = new Date(`${dueDate}T${dueTime}`).toISOString();
     const title = taskType === '其他' ? String(fd.get('title')) : taskType;
     const photoPayload = photos.length ? photos.map((p) => ({ data: p.data, mime: p.mime })) : undefined;
 
-    // 同步计划：填了数据时，同时写入对应的护理记录表（宝宝详情页可见），
-    // 照片挂在记录上；纯待办（什么都没填）只建任务
-    const recordSync = buildRecordSync({
+    const syncs = buildRecordSyncs({
       subjectType, subjectId, taskType, title, fieldValues, timeIso,
       notes: detail.trim(), recordedBy: createdBy, photos: photoPayload,
     });
@@ -331,20 +427,20 @@ function TaskModal({
       subject_id: subjectId,
       title,
       detail: combinedDetail || null,
+      internal_note: internalNote.trim() || null,
       due_time: timeIso,
       created_by: createdBy,
     };
-    // 有同步记录时照片挂记录；否则挂任务
-    if (photoPayload && !recordSync) body.photos = photoPayload;
+    if (photoPayload && !syncs.length) body.photos = photoPayload;
 
     setBusy(true);
     setErr('');
     try {
       await api.post('/api/tasks', body);
-      if (recordSync) await api.post(recordSync.url, recordSync.payload);
+      for (const s of syncs) await api.post(s.url, s.payload);
       onSaved();
-    } catch (e) {
-      setErr((e as Error).message);
+    } catch (e2) {
+      setErr((e2 as Error).message);
       setBusy(false);
     }
   };
@@ -362,15 +458,19 @@ function TaskModal({
           </div>
           <div className="field">
             <label>{t('tasks.subject')}</label>
-            <select name="subject_id" required>
+            <select value={subjectId} onChange={(e) => setSubjectId(Number(e.target.value))}>
               {(subjectType === 'baby' ? babies : mothers).map((s) => (
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>
           </div>
+          {/* 时间在前、日期在后，符合先选时间的习惯 */}
           <div className="field">
             <label>{t('tasks.dueTime')}</label>
-            <input type="datetime-local" name="due_time" defaultValue={localDatetimeValue()} required />
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input type="time" value={dueTime} onChange={(e) => setDueTime(e.target.value)} required style={{ flex: 1 }} />
+              <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required style={{ flex: 1.4 }} />
+            </div>
           </div>
           <div className="field full">
             <label>{t('tasks.taskTitle')}</label>
@@ -386,7 +486,7 @@ function TaskModal({
               <input name="title" required placeholder={t('tasks.titlePlaceholder')} />
             </div>
           )}
-          {(TYPE_FIELDS[taskType] || []).map((f) => (
+          {visibleFields.map((f) => (
             <div className="field" key={f.id}>
               <label>{t(f.labelKey)}</label>
               {f.kind === 'select' ? (
@@ -401,7 +501,7 @@ function TaskModal({
                 </select>
               ) : (
                 <input
-                  type={f.kind === 'number' ? 'number' : 'text'}
+                  type={f.kind === 'number' ? 'number' : f.kind === 'time' ? 'time' : 'text'}
                   step={f.step}
                   placeholder={f.unit || ''}
                   value={fieldValues[f.id] || ''}
@@ -410,6 +510,19 @@ function TaskModal({
               )}
             </div>
           ))}
+          {taskType === '喂奶时间' && isBF(fieldValues) && (
+            <div className="field full">
+              <button
+                type="button"
+                className={`btn ${timerStart != null ? 'voice-btn listening' : ''}`}
+                onClick={toggleTimer}
+              >
+                {timerStart != null
+                  ? `${t('tasks.timerStop')} ${Math.floor(elapsed / 60)}:${pad(elapsed % 60)}`
+                  : t('tasks.timerStart')}
+              </button>
+            </div>
+          )}
           {DETAIL_PRESETS[taskType]?.length > 0 && (
             <div className="field full">
               <label>{t('tasks.quickDetail')}</label>
@@ -435,6 +548,10 @@ function TaskModal({
           <div className="field full">
             <label>{t('photo.photos')}</label>
             <PhotoInput photos={photos} onChange={setPhotos} />
+          </div>
+          <div className="field full">
+            <label>{t('tasks.internalNote')}</label>
+            <textarea value={internalNote} onChange={(e) => setInternalNote(e.target.value)} rows={2} />
           </div>
         </div>
         {err && <div className="form-error">{err}</div>}

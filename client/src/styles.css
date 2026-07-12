@@ -514,6 +514,30 @@ td.wrap {
   font-size: 12px;
 }
 
+.row-del {
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+
+.row-del:hover {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.handover-search {
+  font-weight: 400;
+  font-size: 13px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  max-width: 200px;
+}
+
 .handover-item {
   border-top: 1px dashed var(--line);
   padding: 10px 0;

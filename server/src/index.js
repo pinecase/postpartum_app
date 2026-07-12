@@ -246,12 +246,12 @@ app.post('/api/babies/:id/diapers', (req, res) => {
 
 app.post('/api/babies/:id/vitals', (req, res) => {
   if (!babyExists(req.params.id)) return res.status(404).json({ error: '未找到宝宝' });
-  const { time, temperature_c, weight_g, jaundice_mg_dl, heart_rate, resp_rate, notes, recorded_by, photos } = req.body;
+  const { time, temperature_c, weight_g, jaundice_mg_dl, heart_rate, resp_rate, spo2, notes, recorded_by, photos } = req.body;
   const r = db.prepare(`
-    INSERT INTO baby_vitals (baby_id, time, temperature_c, weight_g, jaundice_mg_dl, heart_rate, resp_rate, notes, recorded_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    INSERT INTO baby_vitals (baby_id, time, temperature_c, weight_g, jaundice_mg_dl, heart_rate, resp_rate, spo2, notes, recorded_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(req.params.id, time || nowIso(), temperature_c ?? null, weight_g ?? null, jaundice_mg_dl ?? null,
-      heart_rate ?? null, resp_rate ?? null, notes ?? null, recorded_by ?? null);
+      heart_rate ?? null, resp_rate ?? null, spo2 ?? null, notes ?? null, recorded_by ?? null);
   savePhotos('vitals', r.lastInsertRowid, photos, recorded_by);
   res.status(201).json(db.prepare(`SELECT * FROM baby_vitals WHERE id = ?`).get(r.lastInsertRowid));
 });
@@ -296,14 +296,14 @@ app.get('/api/tasks', (req, res) => {
 });
 
 app.post('/api/tasks', (req, res) => {
-  const { subject_type, subject_id, due_time, title, detail, created_by, photos } = req.body;
+  const { subject_type, subject_id, due_time, title, detail, created_by, photos, internal_note } = req.body;
   if (!subject_type || !subject_id || !title) {
     return res.status(400).json({ error: '对象与任务标题必填' });
   }
   const r = db.prepare(`
-    INSERT INTO care_tasks (subject_type, subject_id, due_time, title, detail, created_by)
-    VALUES (?, ?, ?, ?, ?, ?)`)
-    .run(subject_type, subject_id, due_time || nowIso(), title, detail ?? null, created_by ?? null);
+    INSERT INTO care_tasks (subject_type, subject_id, due_time, title, detail, created_by, internal_note)
+    VALUES (?, ?, ?, ?, ?, ?, ?)`)
+    .run(subject_type, subject_id, due_time || nowIso(), title, detail ?? null, created_by ?? null, internal_note ?? null);
   savePhotos('tasks', r.lastInsertRowid, photos, created_by);
   res.status(201).json(db.prepare(`SELECT * FROM care_tasks WHERE id = ?`).get(r.lastInsertRowid));
 });
@@ -318,6 +318,31 @@ app.patch('/api/tasks/:id', (req, res) => {
     db.prepare(`UPDATE care_tasks SET status = '待办', completed_by = NULL, completed_at = NULL WHERE id = ?`).run(t.id);
   }
   res.json(db.prepare(`SELECT * FROM care_tasks WHERE id = ?`).get(t.id));
+});
+
+// ---------- 删除记录/任务（删错重录） ----------
+const RECORD_TABLES = {
+  feeds: 'baby_feeds',
+  diapers: 'baby_diapers',
+  vitals: 'baby_vitals',
+  cares: 'baby_cares',
+  mother_vitals: 'mother_vitals',
+};
+
+app.delete('/api/records/:type/:id', (req, res) => {
+  const table = RECORD_TABLES[req.params.type];
+  if (!table) return res.status(400).json({ error: '未知记录类型' });
+  db.prepare(`DELETE FROM photos WHERE record_type = ? AND record_id = ?`).run(req.params.type, req.params.id);
+  const r = db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(req.params.id);
+  if (!r.changes) return res.status(404).json({ error: '未找到记录' });
+  res.json({ ok: true });
+});
+
+app.delete('/api/tasks/:id', (req, res) => {
+  db.prepare(`DELETE FROM photos WHERE record_type = 'tasks' AND record_id = ?`).run(req.params.id);
+  const r = db.prepare(`DELETE FROM care_tasks WHERE id = ?`).run(req.params.id);
+  if (!r.changes) return res.status(404).json({ error: '未找到任务' });
+  res.json({ ok: true });
 });
 
 // ---------- 交接班 ----------
