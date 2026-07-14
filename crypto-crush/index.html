@@ -22,6 +22,11 @@
     display:flex; flex-direction:column; align-items:center;
     min-height:100%; padding:12px; user-select:none; overflow-x:hidden;
   }
+  body.bear {
+    background-image:
+      linear-gradient(180deg, rgba(234,57,67,.08), transparent 40%),
+      repeating-linear-gradient(90deg, transparent 0 39px, rgba(255,255,255,.02) 39px 40px);
+  }
   .wrap { width:100%; max-width:520px; display:flex; flex-direction:column; gap:10px; }
 
   h1 {
@@ -60,6 +65,7 @@
     z-index:50; white-space:nowrap; max-width:92vw; overflow:hidden; text-overflow:ellipsis;
   }
   #news.show { top:14px; }
+  #news.bad { border-color:var(--red); color:#ff8f96; }
 
   #board-outer {
     position:relative; width:100%; background:var(--panel);
@@ -89,6 +95,11 @@
     40% { transform:scale(1.25); filter:brightness(2); }
     100% { transform:scale(0); opacity:0; }
   }
+  .tile.shake .chip { animation:shake .35s; }
+  @keyframes shake {
+    20%,60% { transform:translateX(-9%); }
+    40%,80% { transform:translateX(9%); }
+  }
 
   .sp-badge {
     position:absolute; inset:6%; border-radius:22%;
@@ -108,6 +119,18 @@
   }
   @keyframes spin { to { filter:hue-rotate(360deg); } }
 
+  .tile.fud { cursor:not-allowed; }
+  .tile.fud .chip {
+    background:linear-gradient(145deg,#3a0d12,#651522) !important;
+    border:2px dashed rgba(234,57,67,.8);
+    font-size:clamp(14px, 4.6vmin, 26px);
+  }
+  .fud-label {
+    position:absolute; bottom:8%; left:0; right:0; text-align:center;
+    font-size:clamp(7px, 1.8vmin, 10px); font-weight:900; letter-spacing:1px;
+    color:#ff8f96; pointer-events:none;
+  }
+
   .float-txt {
     position:absolute; z-index:30; pointer-events:none;
     font-weight:900; font-size:15px; white-space:nowrap;
@@ -126,62 +149,169 @@
   }
   .legend b { color:var(--text); }
 
-  #overlay {
+  .overlay {
     position:fixed; inset:0; background:rgba(5,8,15,.85); backdrop-filter:blur(4px);
     display:none; align-items:center; justify-content:center; z-index:100;
+    padding:16px;
   }
-  #overlay.show { display:flex; }
+  .overlay.show { display:flex; }
   .modal {
     background:var(--panel2); border:1px solid #2c3a63; border-radius:20px;
-    padding:28px 32px; text-align:center; max-width:340px; width:88%;
-    box-shadow:0 20px 60px rgba(0,0,0,.7);
+    padding:24px; text-align:center; max-width:400px; width:100%;
+    box-shadow:0 20px 60px rgba(0,0,0,.7); max-height:92vh; overflow-y:auto;
   }
   .modal h2 { font-size:20px; margin-bottom:8px; }
-  .modal .final { font-size:30px; font-weight:800; color:var(--green); margin:10px 0; font-variant-numeric:tabular-nums; }
-  .modal .sub { color:var(--dim); font-size:13px; margin-bottom:16px; }
-  .modal .record { color:var(--gold); font-weight:700; font-size:14px; margin-bottom:8px; }
+  .modal .final { font-size:30px; font-weight:800; color:var(--green); margin:8px 0; font-variant-numeric:tabular-nums; }
+  .modal .sub { color:var(--dim); font-size:13px; margin-bottom:14px; }
+  .modal .record { color:var(--gold); font-weight:700; font-size:14px; margin-bottom:6px; }
   button.cta {
     background:linear-gradient(90deg,#16c784,#0ea5e9); color:#04121c; border:none;
-    font-size:16px; font-weight:800; padding:12px 30px; border-radius:12px; cursor:pointer;
+    font-size:15px; font-weight:800; padding:12px 24px; border-radius:12px; cursor:pointer;
     font-family:inherit;
   }
   button.cta:active { transform:scale(.96); }
-  #mute {
-    position:fixed; top:10px; right:10px; z-index:60; background:var(--panel);
+  button.ghost {
+    background:transparent; border:1px solid #2c3a63; color:var(--dim);
+    font-size:14px; font-weight:700; padding:11px 20px; border-radius:12px; cursor:pointer;
+    font-family:inherit;
+  }
+  button.ghost:hover { color:var(--text); border-color:#41528a; }
+  .btn-row { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top:14px; }
+
+  #player-name {
+    width:100%; background:var(--panel); border:1px solid #2c3a63; border-radius:10px;
+    color:var(--text); font-size:15px; padding:11px 14px; text-align:center;
+    font-family:inherit; outline:none; margin-bottom:4px;
+  }
+  #player-name:focus { border-color:var(--green); }
+
+  /* menu */
+  .menu-section { margin-top:16px; text-align:left; }
+  .menu-section .sec-label { font-size:12px; color:var(--dim); letter-spacing:2px; margin-bottom:8px; }
+  .skin-row { display:flex; gap:8px; }
+  .skin-chip {
+    flex:1; background:var(--panel); border:1px solid #2c3a63; border-radius:12px;
+    color:var(--text); padding:10px 6px; cursor:pointer; font-family:inherit;
+    font-size:13px; font-weight:700; text-align:center;
+  }
+  .skin-chip span { display:block; font-size:12px; color:var(--dim); margin-top:5px; letter-spacing:1px; font-weight:400; }
+  .skin-chip.on { border-color:var(--gold); box-shadow:0 0 0 1px var(--gold), 0 0 14px rgba(247,147,26,.3); }
+  .mode-card {
+    display:block; width:100%; background:var(--panel); border:1px solid #2c3a63;
+    border-radius:14px; color:var(--text); padding:14px 16px; cursor:pointer;
+    font-family:inherit; text-align:left; margin-bottom:10px;
+  }
+  .mode-card:hover { border-color:var(--green); }
+  .mode-card .m-title { font-size:16px; font-weight:800; }
+  .mode-card .m-desc { font-size:12px; color:var(--dim); margin-top:4px; line-height:1.6; }
+  .mode-card.bear-card:hover { border-color:var(--red); }
+
+  /* leaderboard */
+  .lb-tabs { display:flex; gap:8px; margin:12px 0; }
+  .lb-tab {
+    flex:1; background:var(--panel); border:1px solid #2c3a63; border-radius:10px;
+    color:var(--dim); padding:9px; cursor:pointer; font-family:inherit; font-size:13px; font-weight:700;
+  }
+  .lb-tab.on { color:var(--text); border-color:var(--green); background:rgba(22,199,132,.08); }
+  #lb-list { list-style:none; text-align:left; min-height:120px; }
+  #lb-list li {
+    display:flex; align-items:center; gap:10px; padding:8px 10px;
+    border-bottom:1px solid #222b44; font-size:14px;
+  }
+  #lb-list li.me { background:rgba(247,147,26,.1); border-radius:8px; }
+  #lb-list .rank { width:30px; font-weight:800; color:var(--dim); font-variant-numeric:tabular-nums; }
+  #lb-list .nm { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #lb-list .sk { font-size:12px; color:var(--dim); }
+  #lb-list .sc { font-weight:800; color:var(--green); font-variant-numeric:tabular-nums; }
+  .lb-empty { color:var(--dim); font-size:13px; padding:30px 0; text-align:center; }
+
+  #mute, #home {
+    position:fixed; top:10px; z-index:60; background:var(--panel);
     border:1px solid #222b44; color:var(--text); border-radius:10px;
     width:36px; height:36px; font-size:16px; cursor:pointer;
   }
+  #mute { right:10px; }
+  #home { left:10px; }
 </style>
 </head>
 <body>
 <button id="mute" title="声音开关">🔊</button>
+<button id="home" title="主菜单">🏠</button>
 <div id="news"></div>
 <div class="wrap">
   <h1>🪙 币圈消消乐<small>CRYPTO CRUSH · MATCH-3</small></h1>
   <div class="stats">
     <div class="stat"><div class="label">💰 总市值</div><div class="value" id="score">$0</div></div>
-    <div class="stat"><div class="label">⛽ Gas</div><div class="value" id="gas">30</div></div>
+    <div class="stat"><div class="label" id="gas-label">⛽ Gas</div><div class="value" id="gas">30</div></div>
     <div class="stat"><div class="label">🏆 历史最高</div><div class="value" id="best">$0</div></div>
   </div>
   <div class="lev-bar"><span class="lev" id="lev"></span></div>
   <div id="board-outer"><div id="board"></div></div>
   <div class="legend">
-    <b>玩法:</b>交换相邻币种,3 连消除赚市值。Gas 耗尽即清算离场。<br>
-    <b>🚀 竖 4 连</b> = 火箭 To the Moon,打穿整列 ·
-    <b>📈 横 4 连</b> = 神级拉盘,扫平整行<br>
-    <b>💥 L/T 形</b> = 爆仓弹,炸 3×3 ·
-    <b>🐋 5 连</b> = 巨鲸,与任意币交换 → 吸干全场该币种<br>
-    <b>提示:</b>双击特殊方块可直接引爆;两个特殊方块互换会同时触发;每 8 步触发一条利好新闻。
+    <b>🚀 竖 4 连</b> = 火箭打穿整列 · <b>📈 横 4 连</b> = 拉盘扫平整行 ·
+    <b>💥 L/T 形</b> = 爆仓弹炸 3×3<br>
+    <b>🐋 5 连</b> = 巨鲸,与任意币交换 → 吸干全场该币种;双鲸对撞清空全场<br>
+    <b>😱 FUD 方块</b> = 无法移动!在它旁边消除、或用特殊方块波及它才能澄清(+30 市值)<br>
+    <b>提示:</b>双击特殊方块直接引爆;连锁反应叠加杠杆倍数;留意 📰 新闻事件。
   </div>
 </div>
 
-<div id="overlay">
+<!-- 主菜单 -->
+<div class="overlay show" id="menu">
+  <div class="modal">
+    <h2>🪙 币圈消消乐</h2>
+    <div class="sub">选好仓位,准备进场</div>
+    <div class="menu-section">
+      <div class="sec-label">币种皮肤</div>
+      <div class="skin-row" id="skin-row"></div>
+    </div>
+    <div class="menu-section">
+      <div class="sec-label">选择模式</div>
+      <button class="mode-card" id="mode-classic">
+        <div class="m-title">⛽ 经典模式</div>
+        <div class="m-desc">30 步 Gas 慢慢梭哈,每 5 步刷一条利空新闻(FUD 方块),每 8 步一条利好(空投特殊方块)。</div>
+      </button>
+      <button class="mode-card bear-card" id="mode-bear">
+        <div class="m-title">🐻 熊市生存</div>
+        <div class="m-desc">90 秒限时,步数不限!FUD 每 6 秒狂轰滥炸,一次消除 10+ 方块可回血续命。苟到最后就是赢。</div>
+      </button>
+    </div>
+    <div class="btn-row">
+      <button class="ghost" id="menu-lb">🏆 巨鲸排行榜</button>
+    </div>
+  </div>
+</div>
+
+<!-- 结算 -->
+<div class="overlay" id="overlay">
   <div class="modal">
     <h2 id="over-title">⚠️ Gas 耗尽,强制清算</h2>
     <div class="record" id="over-record" style="display:none">🎉 新纪录!</div>
     <div class="final" id="over-score">$0</div>
     <div class="sub" id="over-sub">本轮行情结束,落袋为安。</div>
-    <button class="cta" id="restart">📉 抄底重来</button>
+    <input id="player-name" maxlength="12" placeholder="输入你的钱包昵称">
+    <div class="btn-row">
+      <button class="cta" id="save-score">💾 保存并看排行</button>
+    </div>
+    <div class="btn-row">
+      <button class="ghost" id="restart">📉 再来一把</button>
+      <button class="ghost" id="to-menu">🏠 主菜单</button>
+    </div>
+  </div>
+</div>
+
+<!-- 排行榜 -->
+<div class="overlay" id="lb-overlay">
+  <div class="modal">
+    <h2>🏆 巨鲸排行榜</h2>
+    <div class="lb-tabs">
+      <button class="lb-tab on" data-mode="classic">⛽ 经典模式</button>
+      <button class="lb-tab" data-mode="bear">🐻 熊市生存</button>
+    </div>
+    <ol id="lb-list"></ol>
+    <div class="btn-row">
+      <button class="ghost" id="lb-close">关闭</button>
+    </div>
   </div>
 </div>
 
@@ -189,18 +319,43 @@
 'use strict';
 const SIZE = 8;
 const START_GAS = 30;
-const NEWS_EVERY = 8;
+const BEAR_TIME = 90;
+const NEWS_EVERY = 8;   // 利好:空投特殊方块
+const FUD_EVERY = 5;    // 经典模式利空:刷 FUD
+const BEAR_FUD_SEC = 6; // 熊市模式 FUD 刷新间隔(秒)
 
-const COINS = [
-  { sym:'₿', name:'BTC',  color:'#f7931a' },
-  { sym:'Ξ', name:'ETH',  color:'#627eea' },
-  { sym:'Ð', name:'DOGE', color:'#c9a227' },
-  { sym:'◎', name:'SOL',  color:'#9945ff' },
-  { sym:'₮', name:'USDT', color:'#26a17b' },
-  { sym:'🐸', name:'PEPE', color:'#3d8130' },
-];
+const COIN_SETS = {
+  classic: { label:'主流币', badge:'₿', coins:[
+    { sym:'₿', name:'BTC',  color:'#f7931a' },
+    { sym:'Ξ', name:'ETH',  color:'#627eea' },
+    { sym:'Ð', name:'DOGE', color:'#c9a227' },
+    { sym:'◎', name:'SOL',  color:'#9945ff' },
+    { sym:'₮', name:'USDT', color:'#26a17b' },
+    { sym:'🐸', name:'PEPE', color:'#3d8130' },
+  ]},
+  alt: { label:'山寨季', badge:'◆', coins:[
+    { sym:'◆', name:'BNB',  color:'#d9a50a' },
+    { sym:'✕', name:'XRP',  color:'#0891b2' },
+    { sym:'₳', name:'ADA',  color:'#3468d1' },
+    { sym:'●', name:'DOT',  color:'#e6007a' },
+    { sym:'▲', name:'AVAX', color:'#e84142' },
+    { sym:'⬡', name:'LINK', color:'#2a5ada' },
+  ]},
+  meme: { label:'Meme 军团', badge:'🐶', coins:[
+    { sym:'🐶', name:'DOGE', color:'#b8860b' },
+    { sym:'🦊', name:'SHIB', color:'#d1495b' },
+    { sym:'🐸', name:'PEPE', color:'#3d8130' },
+    { sym:'🎩', name:'WIF',  color:'#8d6e63' },
+    { sym:'🦴', name:'BONK', color:'#e08e45' },
+    { sym:'🌕', name:'MOON', color:'#5c6bc0' },
+  ]},
+};
+let skinKey = localStorage.getItem('cc_skin') || 'classic';
+if (!COIN_SETS[skinKey]) skinKey = 'classic';
+let COINS = COIN_SETS[skinKey].coins;
+
 const SP_ICON = { rocket:'🚀', pump:'📈', liq:'💥', whale:'🐋' };
-const NEWS_POOL = [
+const GOOD_NEWS = [
   '📰 马斯克又发推了!随机空投一个特殊方块!',
   '📰 现货 ETF 获批!机构进场!',
   '📰 美联储降息!流动性来了!',
@@ -209,21 +364,41 @@ const NEWS_POOL = [
   '📰 灰度增持!巨鲸异动!',
   '📰 某交易所上新币!FOMO 情绪蔓延!',
 ];
+const FUD_NEWS = [
+  '📉 SEC 又双叒起诉了!FUD 方块出现!',
+  '📉 某交易所疑似跑路!FUD 蔓延!',
+  '📉 巨鲸砸盘一万枚!恐慌上头!',
+  '📉 大 V 集体唱空!FUD 方块 +1!',
+  '📉 稳定币脱锚传闻!小心 FUD!',
+  '📉 黑客攻击跨链桥!FUD 来袭!',
+];
 const COMBO_TXT = { 2:'📊 连击 · 2x 杠杆', 3:'🔥 FOMO 追涨 · 3x', 4:'💎 钻石手 · 4x', 5:'🚀 TO THE MOON · 5x' };
+const MODE_META = {
+  classic: { label:'⛽ 经典模式', overTitle:'⚠️ Gas 耗尽,强制清算' },
+  bear:    { label:'🐻 熊市生存', overTitle:'🐻 熊市见底,幸存结算' },
+};
 
 const boardEl = document.getElementById('board');
 const scoreEl = document.getElementById('score');
 const gasEl   = document.getElementById('gas');
+const gasLabelEl = document.getElementById('gas-label');
 const bestEl  = document.getElementById('best');
 const levEl   = document.getElementById('lev');
 const newsEl  = document.getElementById('news');
 
 let grid = [];        // grid[r][c] -> tile | null
-let score = 0, gas = START_GAS, movesDone = 0;
-let busy = false, gameOver = false;
+let mode = 'classic';
+let score = 0, gas = START_GAS, timeLeft = BEAR_TIME, movesDone = 0;
+let busy = false, gameOver = true; // 开局停在主菜单
 let sel = null, dragStart = null;
-let best = +(localStorage.getItem('cc_best') || 0);
+let timerId = null, savedTs = null;
 let muted = false;
+
+// 旧版单一最高分迁移到经典模式
+if (localStorage.getItem('cc_best') && !localStorage.getItem('cc_best_classic')) {
+  localStorage.setItem('cc_best_classic', localStorage.getItem('cc_best'));
+}
+const bestOf = m => +(localStorage.getItem('cc_best_' + m) || 0);
 
 const k = (r,c) => r * SIZE + c;
 const unk = key => [Math.floor(key / SIZE), key % SIZE];
@@ -252,7 +427,7 @@ document.getElementById('mute').onclick = e => {
 
 /* ---------- tiles ---------- */
 function makeTile(r, c, type, special) {
-  const t = { r, c, type, special };
+  const t = { r, c, type, special, fud: false };
   const el = document.createElement('div');
   el.className = 'tile';
   el._tile = t;
@@ -264,7 +439,11 @@ function makeTile(r, c, type, special) {
 }
 function renderTile(t) {
   const el = t.el;
-  el.className = 'tile' + (t.special ? ' special ' + t.special : '');
+  el.className = 'tile' + (t.special ? ' special ' + t.special : '') + (t.fud ? ' fud' : '');
+  if (t.fud) {
+    el.innerHTML = '<div class="chip">😱</div><div class="fud-label">FUD</div>';
+    return;
+  }
   if (t.special === 'whale') {
     el.innerHTML = '<div class="chip">🐋</div>';
     return;
@@ -280,6 +459,11 @@ function setPos(t) {
   t.el.style.left = (t.c * 100 / SIZE) + '%';
 }
 function randType() { return Math.floor(Math.random() * COINS.length); }
+function shakeTile(t) {
+  t.el.classList.add('shake');
+  beep(120, .12, 'sawtooth');
+  setTimeout(() => t.el.classList.remove('shake'), 380);
+}
 
 function initBoard() {
   boardEl.innerHTML = '';
@@ -305,11 +489,11 @@ function findRuns() {
       let b = 0;
       while (b < SIZE) {
         const t0 = horizontal ? grid[a][b] : grid[b][a];
-        const ty = (t0 && t0.type >= 0) ? t0.type : -99;
+        const ty = (t0 && !t0.fud && t0.type >= 0) ? t0.type : -99;
         let len = 1;
         while (b + len < SIZE) {
           const tn = horizontal ? grid[a][b+len] : grid[b+len][a];
-          if (!tn || tn.type < 0 || tn.type !== ty) break;
+          if (!tn || tn.fud || tn.type < 0 || tn.type !== ty) break;
           len++;
         }
         if (ty >= 0 && len >= 3) {
@@ -397,17 +581,32 @@ function expandClears(set) {
       const cnt = {};
       for (let rr = 0; rr < SIZE; rr++) for (let cc = 0; cc < SIZE; cc++) {
         const x = grid[rr][cc];
-        if (x && x.type >= 0) cnt[x.type] = (cnt[x.type] || 0) + 1;
+        if (x && !x.fud && x.type >= 0) cnt[x.type] = (cnt[x.type] || 0) + 1;
       }
       const top = Object.keys(cnt).sort((a,b) => cnt[b] - cnt[a])[0];
       if (top != null) {
         for (let rr = 0; rr < SIZE; rr++) for (let cc = 0; cc < SIZE; cc++) {
           const x = grid[rr][cc];
-          if (x && x.type === +top) q.push(k(rr, cc));
+          if (x && !x.fud && x.type === +top) q.push(k(rr, cc));
         }
         floatText(r, c, `🐋 巨鲸吸干 ${COINS[+top].name}!`, '#59d2fe');
       }
     }
+  }
+  // 消除波及:被清掉的方块会"澄清"四周相邻的 FUD
+  const splash = [];
+  out.forEach(key => {
+    const [r, c] = unk(key);
+    [[1,0],[-1,0],[0,1],[0,-1]].forEach(([dr, dc]) => {
+      if (!inb(r+dr, c+dc)) return;
+      const t = grid[r+dr][c+dc];
+      if (t && t.fud && !out.has(k(r+dr, c+dc))) splash.push([r+dr, c+dc]);
+    });
+  });
+  if (splash.length) {
+    splash.forEach(([r, c]) => out.add(k(r, c)));
+    const [fr, fc] = splash[0];
+    floatText(fr, fc, '🧯 FUD 已澄清!', '#ffd166');
   }
   return out;
 }
@@ -419,7 +618,7 @@ function popTiles(keys, mult) {
     const [r, c] = unk(key);
     const t = grid[r][c];
     if (!t) return;
-    gained += (t.special ? 60 : 10) * mult;
+    gained += (t.fud ? 30 : t.special ? 60 : 10) * mult;
     grid[r][c] = null;
     t.el.classList.add('pop');
     setTimeout(() => t.el.remove(), 320);
@@ -452,7 +651,7 @@ function gravityRefill() {
 }
 
 async function cascade(initialSet, runs, swapKeys) {
-  let mult = 1;
+  let mult = 1, totalCleared = 0;
   while (true) {
     let clearSet, spawns = [];
     if (runs) ({ clearSet, spawns } = planClears(runs, swapKeys));
@@ -472,6 +671,7 @@ async function cascade(initialSet, runs, swapKeys) {
     const expanded = expandClears(clearSet);
     if (!expanded.size) break;
     beep(300 + mult * 90, .1);
+    totalCleared += expanded.size;
     popTiles(expanded, mult);
     await sleep(300);
     gravityRefill();
@@ -485,6 +685,7 @@ async function cascade(initialSet, runs, swapKeys) {
     beep(400 + mult * 120, .12, 'sawtooth');
   }
   setTimeout(() => levEl.classList.remove('show'), 900);
+  return totalCleared;
 }
 
 function showLeverage(mult) {
@@ -497,6 +698,15 @@ function showLeverage(mult) {
   }
 }
 
+function bearTimeBonus(cleared) {
+  if (mode !== 'bear' || gameOver || cleared < 10) return;
+  const bonus = cleared >= 18 ? 5 : 2;
+  timeLeft += bonus;
+  updateHud();
+  floatText(3, 3, `⏱ +${bonus}s 苟住!`, '#59d2fe');
+  beep(1040, .15, 'square');
+}
+
 /* ---------- swap ---------- */
 function swapPositions(a, b) {
   [grid[a.r][a.c], grid[b.r][b.c]] = [b, a];
@@ -507,13 +717,14 @@ function swapPositions(a, b) {
 
 async function doSwap(a, b) {
   if (busy || gameOver) return;
+  if (a.fud || b.fud) { shakeTile(a.fud ? a : b); clearSel(); return; }
   busy = true;
   clearSel();
   swapPositions(a, b);
   beep(520, .06);
   await sleep(200);
 
-  let acted = false;
+  let acted = false, cleared = 0;
   if (a.special === 'whale' || b.special === 'whale') {
     const whale = a.special === 'whale' ? a : b;
     const other = whale === a ? b : a;
@@ -525,20 +736,20 @@ async function doSwap(a, b) {
       set.add(k(other.r, other.c));
       for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
         const x = grid[r][c];
-        if (x && x.type === other.type) set.add(k(r, c));
+        if (x && !x.fud && x.type === other.type) set.add(k(r, c));
       }
       floatText(whale.r, whale.c, `🐋 巨鲸吸干 ${COINS[other.type].name}!`, '#59d2fe');
     }
     whale.special = null; // effect applied via the set; avoid double trigger
-    await cascade(set, null, []);
+    cleared = await cascade(set, null, []);
     acted = true;
   } else if (a.special && b.special) {
-    await cascade(new Set([k(a.r, a.c), k(b.r, b.c)]), null, []);
+    cleared = await cascade(new Set([k(a.r, a.c), k(b.r, b.c)]), null, []);
     acted = true;
   } else {
     const runs = findRuns();
     if (runs.length) {
-      await cascade(null, runs, [k(a.r, a.c), k(b.r, b.c)]);
+      cleared = await cascade(null, runs, [k(a.r, a.c), k(b.r, b.c)]);
       acted = true;
     }
   }
@@ -548,6 +759,7 @@ async function doSwap(a, b) {
     beep(180, .09);
     await sleep(200);
   } else {
+    bearTimeBonus(cleared);
     spendGas();
   }
   busy = false;
@@ -558,7 +770,8 @@ async function activateSpecial(t) {
   if (busy || gameOver || !t.special) return;
   busy = true;
   clearSel();
-  await cascade(new Set([k(t.r, t.c)]), null, []);
+  const cleared = await cascade(new Set([k(t.r, t.c)]), null, []);
+  bearTimeBonus(cleared);
   spendGas();
   busy = false;
   afterTurn();
@@ -566,27 +779,49 @@ async function activateSpecial(t) {
 
 /* ---------- turn bookkeeping ---------- */
 function spendGas() {
-  gas--; movesDone++;
+  if (mode === 'classic') gas--;
+  movesDone++;
   updateHud();
-  if (gas > 0 && movesDone % NEWS_EVERY === 0) newsEvent();
+  if (gameOver) return;
+  const alive = mode === 'classic' ? gas > 0 : timeLeft > 0;
+  if (!alive) return;
+  if (movesDone % NEWS_EVERY === 0) goodNewsEvent();
+  else if (mode === 'classic' && movesDone % FUD_EVERY === 0) fudNewsEvent();
 }
 function updateHud() {
   scoreEl.textContent = fmt(score);
-  gasEl.textContent = gas;
-  gasEl.classList.toggle('low', gas <= 5);
-  if (score > best) { best = score; localStorage.setItem('cc_best', best); }
-  bestEl.textContent = fmt(best);
+  if (mode === 'classic') {
+    gasLabelEl.textContent = '⛽ Gas';
+    gasEl.textContent = gas;
+    gasEl.classList.toggle('low', gas <= 5);
+  } else {
+    gasLabelEl.textContent = '⏱ 崩盘倒计时';
+    gasEl.textContent = Math.max(0, timeLeft) + 's';
+    gasEl.classList.toggle('low', timeLeft <= 10);
+  }
+  if (score > bestOf(mode)) localStorage.setItem('cc_best_' + mode, score);
+  bestEl.textContent = fmt(bestOf(mode));
 }
 function afterTurn() {
-  if (gas <= 0) return endGame();
+  if (gameOver) return;
+  if (mode === 'classic' && gas <= 0) return endGame();
+  if (mode === 'bear' && timeLeft <= 0) return endGame();
   if (!hasMove()) shuffleBoard(true);
 }
 
-function newsEvent() {
+function showNews(txt, bad) {
+  newsEl.textContent = txt;
+  newsEl.classList.toggle('bad', !!bad);
+  newsEl.classList.add('show');
+  clearTimeout(showNews._t);
+  showNews._t = setTimeout(() => newsEl.classList.remove('show'), 2600);
+}
+
+function goodNewsEvent() {
   const candidates = [];
   for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
     const t = grid[r][c];
-    if (t && !t.special) candidates.push(t);
+    if (t && !t.special && !t.fud) candidates.push(t);
   }
   if (!candidates.length) return;
   const t = candidates[Math.floor(Math.random() * candidates.length)];
@@ -594,10 +829,56 @@ function newsEvent() {
   t.special = roll < .08 ? 'whale' : roll < .40 ? 'liq' : roll < .70 ? 'rocket' : 'pump';
   if (t.special === 'whale') t.type = -1;
   renderTile(t);
-  newsEl.textContent = NEWS_POOL[Math.floor(Math.random() * NEWS_POOL.length)];
-  newsEl.classList.add('show');
+  showNews(GOOD_NEWS[Math.floor(Math.random() * GOOD_NEWS.length)]);
   beep(660, .15, 'square'); beep(990, .2, 'square');
-  setTimeout(() => newsEl.classList.remove('show'), 2600);
+}
+
+function fudCount() {
+  let n = 0;
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++)
+    if (grid[r][c] && grid[r][c].fud) n++;
+  return n;
+}
+function spawnFud() {
+  const cap = mode === 'bear' ? 10 : 8;
+  if (fudCount() >= cap) return false;
+  const candidates = [];
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    const t = grid[r][c];
+    if (t && !t.special && !t.fud) candidates.push(t);
+  }
+  if (!candidates.length) return false;
+  const t = candidates[Math.floor(Math.random() * candidates.length)];
+  t.fud = true; t.type = -2;
+  renderTile(t);
+  beep(160, .18, 'sawtooth');
+  return true;
+}
+function fudNewsEvent() {
+  if (spawnFud()) showNews(FUD_NEWS[Math.floor(Math.random() * FUD_NEWS.length)], true);
+}
+
+/* ---------- bear mode timer ---------- */
+function startTimer() {
+  stopTimer();
+  let tick = 0;
+  timerId = setInterval(() => {
+    if (gameOver) return stopTimer();
+    timeLeft--; tick++;
+    updateHud();
+    if (timeLeft <= 0) {
+      stopTimer();
+      if (!busy) endGame();
+      return;
+    }
+    if (tick % BEAR_FUD_SEC === 0 && !busy) {
+      if (spawnFud() && tick % (BEAR_FUD_SEC * 2) === 0)
+        showNews(FUD_NEWS[Math.floor(Math.random() * FUD_NEWS.length)], true);
+    }
+  }, 1000);
+}
+function stopTimer() {
+  if (timerId) { clearInterval(timerId); timerId = null; }
 }
 
 function hasMove() {
@@ -605,6 +886,7 @@ function hasMove() {
     if (grid[r][c] && grid[r][c].special) return true;
   const swapCheck = (r1, c1, r2, c2) => {
     const a = grid[r1][c1], b = grid[r2][c2];
+    if (!a || !b || a.fud || b.fud) return false;
     [grid[r1][c1], grid[r2][c2]] = [b, a];
     const found = findRuns().length > 0;
     [grid[r1][c1], grid[r2][c2]] = [a, b];
@@ -619,38 +901,146 @@ function hasMove() {
 
 function shuffleBoard(announce) {
   const tiles = [];
-  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++)
-    if (grid[r][c] && !grid[r][c].special) tiles.push(grid[r][c]);
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    const t = grid[r][c];
+    if (t && !t.special && !t.fud) tiles.push(t);
+  }
   for (let tries = 0; tries < 80; tries++) {
     tiles.forEach(t => { t.type = randType(); });
     if (!findRuns().length && hasMove()) break;
   }
   tiles.forEach(renderTile);
-  if (announce) {
-    newsEl.textContent = '🔀 无路可走,市场重新洗牌!';
-    newsEl.classList.add('show');
-    setTimeout(() => newsEl.classList.remove('show'), 2200);
-  }
+  if (announce) showNews('🔀 无路可走,市场重新洗牌!');
+}
+
+/* ---------- game flow ---------- */
+function startGame(m) {
+  mode = m;
+  score = 0; gas = START_GAS; timeLeft = BEAR_TIME; movesDone = 0;
+  gameOver = false; busy = false; sel = null; savedTs = null;
+  document.body.classList.toggle('bear', m === 'bear');
+  document.getElementById('menu').classList.remove('show');
+  document.getElementById('overlay').classList.remove('show');
+  document.getElementById('lb-overlay').classList.remove('show');
+  updateHud();
+  initBoard();
+  if (m === 'bear') startTimer();
+  else stopTimer();
 }
 
 function endGame() {
+  if (gameOver) return;
   gameOver = true;
-  const isRecord = score >= best && score > 0;
+  stopTimer();
+  const isRecord = score >= bestOf(mode) && score > 0;
+  document.getElementById('over-title').textContent = MODE_META[mode].overTitle;
   document.getElementById('over-score').textContent = fmt(score);
   document.getElementById('over-record').style.display = isRecord ? 'block' : 'none';
   document.getElementById('over-sub').textContent =
     score >= 5000 ? '你就是传说中的聪明钱 🧠' :
     score >= 2500 ? '这波操作稳如老狗 💪' :
     score >= 1000 ? '小赚,落袋为安。' : '韭菜的自我修养,下把翻身。🥬';
+  const saveBtn = document.getElementById('save-score');
+  saveBtn.disabled = false;
+  saveBtn.textContent = '💾 保存并看排行';
+  document.getElementById('player-name').value = localStorage.getItem('cc_name') || '';
   beep(220, .3, 'sawtooth'); beep(150, .5, 'sawtooth');
   document.getElementById('overlay').classList.add('show');
 }
-document.getElementById('restart').onclick = () => {
+
+document.getElementById('restart').onclick = () => startGame(mode);
+document.getElementById('to-menu').onclick = () => {
+  stopTimer();
   document.getElementById('overlay').classList.remove('show');
-  score = 0; gas = START_GAS; movesDone = 0; gameOver = false; busy = false; sel = null;
-  updateHud();
-  initBoard();
+  document.getElementById('menu').classList.add('show');
 };
+document.getElementById('home').onclick = () => {
+  stopTimer();
+  gameOver = true;
+  clearSel();
+  document.getElementById('overlay').classList.remove('show');
+  document.getElementById('lb-overlay').classList.remove('show');
+  document.getElementById('menu').classList.add('show');
+};
+
+/* ---------- leaderboard ---------- */
+function loadBoard() {
+  try { return JSON.parse(localStorage.getItem('cc_board')) || {}; }
+  catch (e) { return {}; }
+}
+document.getElementById('save-score').onclick = e => {
+  const name = (document.getElementById('player-name').value.trim() || '匿名韭菜').slice(0, 12);
+  localStorage.setItem('cc_name', name);
+  const b = loadBoard();
+  savedTs = Date.now();
+  (b[mode] = b[mode] || []).push({ name, score, skin: skinKey, ts: savedTs });
+  b[mode].sort((x, y) => y.score - x.score);
+  b[mode] = b[mode].slice(0, 10);
+  localStorage.setItem('cc_board', JSON.stringify(b));
+  e.target.disabled = true;
+  e.target.textContent = '✅ 已保存';
+  document.getElementById('overlay').classList.remove('show');
+  showLeaderboard(mode);
+};
+
+function showLeaderboard(tab) {
+  document.querySelectorAll('.lb-tab').forEach(btn =>
+    btn.classList.toggle('on', btn.dataset.mode === tab));
+  const list = document.getElementById('lb-list');
+  const entries = loadBoard()[tab] || [];
+  if (!entries.length) {
+    list.innerHTML = '<div class="lb-empty">还没有巨鲸上榜,虚位以待 🐋</div>';
+  } else {
+    const medal = ['🥇', '🥈', '🥉'];
+    list.innerHTML = entries.map((e, i) => {
+      const badge = COIN_SETS[e.skin] ? COIN_SETS[e.skin].badge : '₿';
+      const me = e.ts === savedTs ? ' class="me"' : '';
+      return `<li${me}><span class="rank">${medal[i] || (i + 1)}</span>` +
+        `<span class="nm">${escapeHtml(e.name)}</span>` +
+        `<span class="sk">${badge}</span>` +
+        `<span class="sc">${fmt(e.score)}</span></li>`;
+    }).join('');
+  }
+  document.getElementById('lb-overlay').classList.add('show');
+}
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, ch =>
+    ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch]));
+}
+document.querySelectorAll('.lb-tab').forEach(btn => {
+  btn.onclick = () => showLeaderboard(btn.dataset.mode);
+});
+document.getElementById('lb-close').onclick = () => {
+  document.getElementById('lb-overlay').classList.remove('show');
+  if (gameOver && !document.getElementById('overlay').classList.contains('show'))
+    document.getElementById('menu').classList.add('show');
+};
+document.getElementById('menu-lb').onclick = () => {
+  document.getElementById('menu').classList.remove('show');
+  showLeaderboard(mode);
+};
+
+/* ---------- menu / skins ---------- */
+function renderSkinRow() {
+  const row = document.getElementById('skin-row');
+  row.innerHTML = Object.keys(COIN_SETS).map(key => {
+    const s = COIN_SETS[key];
+    const preview = s.coins.map(c => c.sym).join(' ');
+    return `<button class="skin-chip${key === skinKey ? ' on' : ''}" data-skin="${key}">` +
+      `${s.label}<span>${preview}</span></button>`;
+  }).join('');
+  row.querySelectorAll('.skin-chip').forEach(btn => {
+    btn.onclick = () => {
+      skinKey = btn.dataset.skin;
+      COINS = COIN_SETS[skinKey].coins;
+      localStorage.setItem('cc_skin', skinKey);
+      renderSkinRow();
+      initBoard(); // 换皮肤即时预览
+    };
+  });
+}
+document.getElementById('mode-classic').onclick = () => startGame('classic');
+document.getElementById('mode-bear').onclick = () => startGame('bear');
 
 /* ---------- floating text ---------- */
 function floatText(r, c, txt, color) {
@@ -695,20 +1085,26 @@ boardEl.addEventListener('pointerup', e => {
   const t = tileFromEvent(e);
   dragStart = null;
   if (!t || busy || gameOver) return;
-  if (!sel) { sel = t; t.el.classList.add('sel'); beep(700, .04); return; }
+  if (!sel) {
+    if (t.fud) { shakeTile(t); return; }
+    sel = t; t.el.classList.add('sel'); beep(700, .04);
+    return;
+  }
   if (sel === t) {
     if (t.special) activateSpecial(t);
     else clearSel();
     return;
   }
   if (adjacent(sel, t)) { doSwap(sel, t); }
+  else if (t.fud) { shakeTile(t); clearSel(); }
   else { clearSel(); sel = t; t.el.classList.add('sel'); beep(700, .04); }
 });
 window.addEventListener('pointercancel', () => { dragStart = null; });
 
 /* ---------- go ---------- */
+renderSkinRow();
 updateHud();
-initBoard();
+initBoard(); // 主菜单背后的预览棋盘
 </script>
 </body>
 </html>
