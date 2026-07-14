@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>币圈消消乐 · Crypto Crush</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  :root {
+    --bg:#0b0e17; --panel:#131826; --panel2:#1a2136;
+    --green:#16c784; --red:#ea3943; --gold:#f7931a; --text:#e8ecf4; --dim:#8a93a8;
+    --cell: calc(100% / 8);
+  }
+  html,body { height:100%; }
+  body {
+    background: var(--bg);
+    background-image:
+      linear-gradient(180deg, rgba(22,199,132,.05), transparent 40%),
+      repeating-linear-gradient(90deg, transparent 0 39px, rgba(255,255,255,.02) 39px 40px);
+    color:var(--text);
+    font-family:'PingFang SC','Microsoft YaHei',-apple-system,'Segoe UI',sans-serif;
+    display:flex; flex-direction:column; align-items:center;
+    min-height:100%; padding:12px; user-select:none; overflow-x:hidden;
+  }
+  .wrap { width:100%; max-width:520px; display:flex; flex-direction:column; gap:10px; }
+
+  h1 {
+    font-size:22px; text-align:center; letter-spacing:1px; margin-top:4px;
+    background:linear-gradient(90deg,#f7931a,#16c784,#627eea);
+    -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+    font-weight:800;
+  }
+  h1 small { font-size:11px; letter-spacing:3px; display:block; color:var(--dim); -webkit-text-fill-color:var(--dim); font-weight:400; }
+
+  .stats { display:flex; gap:8px; }
+  .stat {
+    flex:1; background:var(--panel); border:1px solid #222b44; border-radius:12px;
+    padding:8px 10px; text-align:center;
+  }
+  .stat .label { font-size:11px; color:var(--dim); }
+  .stat .value { font-size:17px; font-weight:700; margin-top:2px; font-variant-numeric:tabular-nums; }
+  #score { color:var(--green); }
+  #gas.low { color:var(--red); animation:blink 1s infinite; }
+  @keyframes blink { 50%{opacity:.4;} }
+
+  .lev-bar { height:22px; display:flex; justify-content:center; align-items:center; }
+  .lev {
+    font-size:13px; font-weight:800; padding:2px 14px; border-radius:20px;
+    background:rgba(22,199,132,.12); color:var(--green); border:1px solid rgba(22,199,132,.4);
+    opacity:0; transform:scale(.6); transition:all .2s;
+  }
+  .lev.show { opacity:1; transform:scale(1); }
+  .lev.hot { background:rgba(234,57,67,.15); color:#ff7a45; border-color:rgba(247,147,26,.6); }
+
+  #news {
+    position:fixed; top:-60px; left:50%; transform:translateX(-50%);
+    background:linear-gradient(90deg,#1a2136,#232c4a); border:1px solid var(--gold);
+    color:var(--gold); padding:10px 20px; border-radius:12px; font-size:14px; font-weight:700;
+    box-shadow:0 8px 30px rgba(0,0,0,.6); transition:top .4s cubic-bezier(.34,1.56,.64,1);
+    z-index:50; white-space:nowrap; max-width:92vw; overflow:hidden; text-overflow:ellipsis;
+  }
+  #news.show { top:14px; }
+
+  #board-outer {
+    position:relative; width:100%; background:var(--panel);
+    border:1px solid #222b44; border-radius:16px; padding:8px;
+    box-shadow:0 10px 40px rgba(0,0,0,.5);
+  }
+  #board { position:relative; width:100%; aspect-ratio:1/1; touch-action:none; }
+
+  .tile {
+    position:absolute; width:var(--cell); height:var(--cell);
+    transition: top .22s cubic-bezier(.4,1.2,.6,1), left .22s cubic-bezier(.4,1.2,.6,1);
+    cursor:pointer; z-index:1;
+  }
+  .tile .chip {
+    position:absolute; inset:6%; border-radius:22%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:clamp(16px, 5.2vmin, 30px); font-weight:800; color:#fff;
+    text-shadow:0 1px 3px rgba(0,0,0,.5);
+    box-shadow: inset 0 -3px 6px rgba(0,0,0,.35), inset 0 2px 4px rgba(255,255,255,.25), 0 2px 6px rgba(0,0,0,.4);
+    transition: transform .15s;
+  }
+  .tile.sel { z-index:5; }
+  .tile.sel .chip { transform:scale(1.12); box-shadow:0 0 0 3px #fff, 0 0 18px 4px rgba(255,255,255,.5); }
+  .tile.pop { z-index:10; }
+  .tile.pop .chip { animation:pop .3s forwards; }
+  @keyframes pop {
+    40% { transform:scale(1.25); filter:brightness(2); }
+    100% { transform:scale(0); opacity:0; }
+  }
+
+  .sp-badge {
+    position:absolute; inset:6%; border-radius:22%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:clamp(14px, 4.6vmin, 26px); pointer-events:none;
+    animation:pulse 1.2s infinite;
+  }
+  @keyframes pulse { 50%{ transform:scale(1.15); } }
+
+  .tile.special .chip { box-shadow: inset 0 -3px 6px rgba(0,0,0,.35), 0 0 12px 2px rgba(255,255,255,.55); }
+  .tile.rocket .chip { background-image:repeating-linear-gradient(0deg, rgba(255,255,255,.35) 0 4px, transparent 4px 9px) !important; }
+  .tile.pump   .chip { background-image:repeating-linear-gradient(90deg, rgba(255,255,255,.35) 0 4px, transparent 4px 9px) !important; }
+  .tile.liq    .chip { background-image:radial-gradient(circle, rgba(255,255,255,.5) 0 20%, transparent 45%) !important; }
+  .tile.whale  .chip {
+    background:conic-gradient(#f7931a,#16c784,#627eea,#ea3943,#f7931a) !important;
+    animation:spin 3s linear infinite;
+  }
+  @keyframes spin { to { filter:hue-rotate(360deg); } }
+
+  .float-txt {
+    position:absolute; z-index:30; pointer-events:none;
+    font-weight:900; font-size:15px; white-space:nowrap;
+    text-shadow:0 2px 8px rgba(0,0,0,.9);
+    animation:rise 1s forwards;
+  }
+  @keyframes rise {
+    0% { transform:translate(-50%,0) scale(.7); opacity:0; }
+    20% { opacity:1; transform:translate(-50%,-10px) scale(1.1); }
+    100% { transform:translate(-50%,-56px) scale(1); opacity:0; }
+  }
+
+  .legend {
+    background:var(--panel); border:1px solid #222b44; border-radius:12px;
+    padding:10px 12px; font-size:12px; color:var(--dim); line-height:1.9;
+  }
+  .legend b { color:var(--text); }
+
+  #overlay {
+    position:fixed; inset:0; background:rgba(5,8,15,.85); backdrop-filter:blur(4px);
+    display:none; align-items:center; justify-content:center; z-index:100;
+  }
+  #overlay.show { display:flex; }
+  .modal {
+    background:var(--panel2); border:1px solid #2c3a63; border-radius:20px;
+    padding:28px 32px; text-align:center; max-width:340px; width:88%;
+    box-shadow:0 20px 60px rgba(0,0,0,.7);
+  }
+  .modal h2 { font-size:20px; margin-bottom:8px; }
+  .modal .final { font-size:30px; font-weight:800; color:var(--green); margin:10px 0; font-variant-numeric:tabular-nums; }
+  .modal .sub { color:var(--dim); font-size:13px; margin-bottom:16px; }
+  .modal .record { color:var(--gold); font-weight:700; font-size:14px; margin-bottom:8px; }
+  button.cta {
+    background:linear-gradient(90deg,#16c784,#0ea5e9); color:#04121c; border:none;
+    font-size:16px; font-weight:800; padding:12px 30px; border-radius:12px; cursor:pointer;
+    font-family:inherit;
+  }
+  button.cta:active { transform:scale(.96); }
+  #mute {
+    position:fixed; top:10px; right:10px; z-index:60; background:var(--panel);
+    border:1px solid #222b44; color:var(--text); border-radius:10px;
+    width:36px; height:36px; font-size:16px; cursor:pointer;
+  }
+</style>
+</head>
+<body>
+<button id="mute" title="声音开关">🔊</button>
+<div id="news"></div>
+<div class="wrap">
+  <h1>🪙 币圈消消乐<small>CRYPTO CRUSH · MATCH-3</small></h1>
+  <div class="stats">
+    <div class="stat"><div class="label">💰 总市值</div><div class="value" id="score">$0</div></div>
+    <div class="stat"><div class="label">⛽ Gas</div><div class="value" id="gas">30</div></div>
+    <div class="stat"><div class="label">🏆 历史最高</div><div class="value" id="best">$0</div></div>
+  </div>
+  <div class="lev-bar"><span class="lev" id="lev"></span></div>
+  <div id="board-outer"><div id="board"></div></div>
+  <div class="legend">
+    <b>玩法:</b>交换相邻币种,3 连消除赚市值。Gas 耗尽即清算离场。<br>
+    <b>🚀 竖 4 连</b> = 火箭 To the Moon,打穿整列 ·
+    <b>📈 横 4 连</b> = 神级拉盘,扫平整行<br>
+    <b>💥 L/T 形</b> = 爆仓弹,炸 3×3 ·
+    <b>🐋 5 连</b> = 巨鲸,与任意币交换 → 吸干全场该币种<br>
+    <b>提示:</b>双击特殊方块可直接引爆;两个特殊方块互换会同时触发;每 8 步触发一条利好新闻。
+  </div>
+</div>
+
+<div id="overlay">
+  <div class="modal">
+    <h2 id="over-title">⚠️ Gas 耗尽,强制清算</h2>
+    <div class="record" id="over-record" style="display:none">🎉 新纪录!</div>
+    <div class="final" id="over-score">$0</div>
+    <div class="sub" id="over-sub">本轮行情结束,落袋为安。</div>
+    <button class="cta" id="restart">📉 抄底重来</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+const SIZE = 8;
+const START_GAS = 30;
+const NEWS_EVERY = 8;
+
+const COINS = [
+  { sym:'₿', name:'BTC',  color:'#f7931a' },
+  { sym:'Ξ', name:'ETH',  color:'#627eea' },
+  { sym:'Ð', name:'DOGE', color:'#c9a227' },
+  { sym:'◎', name:'SOL',  color:'#9945ff' },
+  { sym:'₮', name:'USDT', color:'#26a17b' },
+  { sym:'🐸', name:'PEPE', color:'#3d8130' },
+];
+const SP_ICON = { rocket:'🚀', pump:'📈', liq:'💥', whale:'🐋' };
+const NEWS_POOL = [
+  '📰 马斯克又发推了!随机空投一个特殊方块!',
+  '📰 现货 ETF 获批!机构进场!',
+  '📰 美联储降息!流动性来了!',
+  '📰 比特币减半倒计时!稀缺性拉满!',
+  '📰 某 L2 宣布空投!撸毛党狂喜!',
+  '📰 灰度增持!巨鲸异动!',
+  '📰 某交易所上新币!FOMO 情绪蔓延!',
+];
+const COMBO_TXT = { 2:'📊 连击 · 2x 杠杆', 3:'🔥 FOMO 追涨 · 3x', 4:'💎 钻石手 · 4x', 5:'🚀 TO THE MOON · 5x' };
+
+const boardEl = document.getElementById('board');
+const scoreEl = document.getElementById('score');
+const gasEl   = document.getElementById('gas');
+const bestEl  = document.getElementById('best');
+const levEl   = document.getElementById('lev');
+const newsEl  = document.getElementById('news');
+
+let grid = [];        // grid[r][c] -> tile | null
+let score = 0, gas = START_GAS, movesDone = 0;
+let busy = false, gameOver = false;
+let sel = null, dragStart = null;
+let best = +(localStorage.getItem('cc_best') || 0);
+let muted = false;
+
+const k = (r,c) => r * SIZE + c;
+const unk = key => [Math.floor(key / SIZE), key % SIZE];
+const sleep = ms => new Promise(res => setTimeout(res, ms));
+const fmt = n => '$' + n.toLocaleString('en-US');
+const inb = (r,c) => r >= 0 && r < SIZE && c >= 0 && c < SIZE;
+
+/* ---------- sound ---------- */
+let actx = null;
+function beep(freq, dur = .08, type = 'triangle', vol = .12) {
+  if (muted) return;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol, actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(.001, actx.currentTime + dur);
+    o.connect(g); g.connect(actx.destination);
+    o.start(); o.stop(actx.currentTime + dur);
+  } catch (e) {}
+}
+document.getElementById('mute').onclick = e => {
+  muted = !muted;
+  e.target.textContent = muted ? '🔇' : '🔊';
+};
+
+/* ---------- tiles ---------- */
+function makeTile(r, c, type, special) {
+  const t = { r, c, type, special };
+  const el = document.createElement('div');
+  el.className = 'tile';
+  el._tile = t;
+  t.el = el;
+  renderTile(t);
+  setPos(t);
+  boardEl.appendChild(el);
+  return t;
+}
+function renderTile(t) {
+  const el = t.el;
+  el.className = 'tile' + (t.special ? ' special ' + t.special : '');
+  if (t.special === 'whale') {
+    el.innerHTML = '<div class="chip">🐋</div>';
+    return;
+  }
+  const coin = COINS[t.type];
+  const bg = t.special ? coin.color
+    : `radial-gradient(circle at 32% 28%, ${coin.color}, ${coin.color}cc 60%, #000c)`;
+  el.innerHTML = `<div class="chip" style="background:${bg}">${t.special ? '' : coin.sym}</div>` +
+    (t.special ? `<div class="sp-badge">${SP_ICON[t.special]}</div>` : '');
+}
+function setPos(t) {
+  t.el.style.top  = (t.r * 100 / SIZE) + '%';
+  t.el.style.left = (t.c * 100 / SIZE) + '%';
+}
+function randType() { return Math.floor(Math.random() * COINS.length); }
+
+function initBoard() {
+  boardEl.innerHTML = '';
+  grid = [];
+  for (let r = 0; r < SIZE; r++) {
+    grid.push([]);
+    for (let c = 0; c < SIZE; c++) {
+      let ty;
+      do { ty = randType(); }
+      while ((c >= 2 && grid[r][c-1].type === ty && grid[r][c-2].type === ty) ||
+             (r >= 2 && grid[r-1][c].type === ty && grid[r-2][c].type === ty));
+      grid[r].push(makeTile(r, c, ty, null));
+    }
+  }
+  if (!hasMove()) shuffleBoard(false);
+}
+
+/* ---------- match detection ---------- */
+function findRuns() {
+  const runs = [];
+  const scan = (horizontal) => {
+    for (let a = 0; a < SIZE; a++) {
+      let b = 0;
+      while (b < SIZE) {
+        const t0 = horizontal ? grid[a][b] : grid[b][a];
+        const ty = (t0 && t0.type >= 0) ? t0.type : -99;
+        let len = 1;
+        while (b + len < SIZE) {
+          const tn = horizontal ? grid[a][b+len] : grid[b+len][a];
+          if (!tn || tn.type < 0 || tn.type !== ty) break;
+          len++;
+        }
+        if (ty >= 0 && len >= 3) {
+          const cells = [];
+          for (let i = 0; i < len; i++) cells.push(horizontal ? k(a, b+i) : k(b+i, a));
+          runs.push({ cells, dir: horizontal ? 'h' : 'v', len });
+        }
+        b += len;
+      }
+    }
+  };
+  scan(true); scan(false);
+  return runs;
+}
+
+function pickSpawnCell(run, swapKeys, used) {
+  for (const key of swapKeys) if (run.cells.includes(key) && !used.has(key)) return key;
+  const mid = run.cells[Math.floor(run.cells.length / 2)];
+  if (!used.has(mid)) return mid;
+  return run.cells.find(key => !used.has(key)) ?? null;
+}
+
+function planClears(runs, swapKeys) {
+  const clearSet = new Set();
+  runs.forEach(run => run.cells.forEach(key => clearSet.add(key)));
+  const spawns = [];
+  const used = new Set();
+  const consumed = new Set(); // runs that already produced a special
+
+  // 5+ in a row -> whale
+  runs.forEach((run, i) => {
+    if (run.len < 5) return;
+    const key = pickSpawnCell(run, swapKeys, used);
+    if (key != null) { spawns.push({ key, special:'whale' }); used.add(key); }
+    consumed.add(i);
+  });
+  // L / T intersections -> liquidation bomb
+  const cellRun = new Map();
+  runs.forEach((run, i) => {
+    if (consumed.has(i)) return;
+    run.cells.forEach(key => {
+      if (cellRun.has(key)) {
+        const j = cellRun.get(key);
+        if (runs[j].dir !== run.dir && !used.has(key)) {
+          spawns.push({ key, special:'liq' });
+          used.add(key); consumed.add(i); consumed.add(j);
+        }
+      } else cellRun.set(key, i);
+    });
+  });
+  // 4 in a row -> rocket (vertical) / pump candle (horizontal)
+  runs.forEach((run, i) => {
+    if (consumed.has(i) || run.len !== 4) return;
+    const key = pickSpawnCell(run, swapKeys, used);
+    if (key != null) {
+      spawns.push({ key, special: run.dir === 'v' ? 'rocket' : 'pump' });
+      used.add(key);
+    }
+  });
+  spawns.forEach(s => clearSet.delete(s.key));
+  return { clearSet, spawns };
+}
+
+function expandClears(set) {
+  const out = new Set();
+  const q = [...set];
+  while (q.length) {
+    const key = q.pop();
+    if (out.has(key)) continue;
+    const [r, c] = unk(key);
+    const t = grid[r][c];
+    if (!t) continue;
+    out.add(key);
+    if (t.special === 'rocket') {
+      for (let i = 0; i < SIZE; i++) q.push(k(i, c));
+      floatText(r, c, '🚀 TO THE MOON!', '#ffd166');
+    } else if (t.special === 'pump') {
+      for (let i = 0; i < SIZE; i++) q.push(k(r, i));
+      floatText(r, c, '📈 神级拉盘!', '#16c784');
+    } else if (t.special === 'liq') {
+      for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++)
+        if (inb(r+dr, c+dc)) q.push(k(r+dr, c+dc));
+      floatText(r, c, '💥 爆仓!', '#ea3943');
+    } else if (t.special === 'whale') {
+      const cnt = {};
+      for (let rr = 0; rr < SIZE; rr++) for (let cc = 0; cc < SIZE; cc++) {
+        const x = grid[rr][cc];
+        if (x && x.type >= 0) cnt[x.type] = (cnt[x.type] || 0) + 1;
+      }
+      const top = Object.keys(cnt).sort((a,b) => cnt[b] - cnt[a])[0];
+      if (top != null) {
+        for (let rr = 0; rr < SIZE; rr++) for (let cc = 0; cc < SIZE; cc++) {
+          const x = grid[rr][cc];
+          if (x && x.type === +top) q.push(k(rr, cc));
+        }
+        floatText(r, c, `🐋 巨鲸吸干 ${COINS[+top].name}!`, '#59d2fe');
+      }
+    }
+  }
+  return out;
+}
+
+/* ---------- resolution ---------- */
+function popTiles(keys, mult) {
+  let gained = 0;
+  keys.forEach(key => {
+    const [r, c] = unk(key);
+    const t = grid[r][c];
+    if (!t) return;
+    gained += (t.special ? 60 : 10) * mult;
+    grid[r][c] = null;
+    t.el.classList.add('pop');
+    setTimeout(() => t.el.remove(), 320);
+  });
+  score += gained;
+  updateHud();
+  return gained;
+}
+
+function gravityRefill() {
+  for (let c = 0; c < SIZE; c++) {
+    let write = SIZE - 1;
+    for (let r = SIZE - 1; r >= 0; r--) {
+      const t = grid[r][c];
+      if (!t) continue;
+      if (write !== r) {
+        grid[write][c] = t; grid[r][c] = null;
+        t.r = write; setPos(t);
+      }
+      write--;
+    }
+    for (let r = write, n = 1; r >= 0; r--, n++) {
+      const t = makeTile(r, c, randType(), null);
+      t.el.style.top = (-(n) * 100 / SIZE) + '%';
+      grid[r][c] = t;
+      t.el.getBoundingClientRect(); // force reflow so the drop animates
+      setPos(t);
+    }
+  }
+}
+
+async function cascade(initialSet, runs, swapKeys) {
+  let mult = 1;
+  while (true) {
+    let clearSet, spawns = [];
+    if (runs) ({ clearSet, spawns } = planClears(runs, swapKeys));
+    else clearSet = initialSet;
+
+    spawns.forEach(s => {
+      const [r, c] = unk(s.key);
+      const t = grid[r][c];
+      if (!t) return;
+      t.special = s.special;
+      if (s.special === 'whale') t.type = -1;
+      renderTile(t);
+      if (s.special === 'whale') floatText(r, c, '🐋 巨鲸出没!', '#59d2fe');
+      beep(880, .12, 'square');
+    });
+
+    const expanded = expandClears(clearSet);
+    if (!expanded.size) break;
+    beep(300 + mult * 90, .1);
+    popTiles(expanded, mult);
+    await sleep(300);
+    gravityRefill();
+    await sleep(280);
+
+    runs = findRuns();
+    initialSet = null; swapKeys = [];
+    if (!runs.length) break;
+    mult++;
+    showLeverage(mult);
+    beep(400 + mult * 120, .12, 'sawtooth');
+  }
+  setTimeout(() => levEl.classList.remove('show'), 900);
+}
+
+function showLeverage(mult) {
+  levEl.textContent = COMBO_TXT[Math.min(mult, 5)] || `🚀 ${mult}x 杠杆拉满`;
+  levEl.classList.add('show');
+  levEl.classList.toggle('hot', mult >= 3);
+  if (mult >= 3) {
+    const [r, c] = [Math.floor(SIZE/2), Math.floor(SIZE/2)];
+    floatText(r, c, COMBO_TXT[Math.min(mult, 5)] || `${mult}x!!`, '#ffd166');
+  }
+}
+
+/* ---------- swap ---------- */
+function swapPositions(a, b) {
+  [grid[a.r][a.c], grid[b.r][b.c]] = [b, a];
+  [a.r, b.r] = [b.r, a.r];
+  [a.c, b.c] = [b.c, a.c];
+  setPos(a); setPos(b);
+}
+
+async function doSwap(a, b) {
+  if (busy || gameOver) return;
+  busy = true;
+  clearSel();
+  swapPositions(a, b);
+  beep(520, .06);
+  await sleep(200);
+
+  let acted = false;
+  if (a.special === 'whale' || b.special === 'whale') {
+    const whale = a.special === 'whale' ? a : b;
+    const other = whale === a ? b : a;
+    const set = new Set([k(whale.r, whale.c)]);
+    if (other.special === 'whale') {
+      for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) set.add(k(r, c));
+      floatText(whale.r, whale.c, '🐋🐋 双鲸对撞 · 大牛市!', '#ffd166');
+    } else {
+      set.add(k(other.r, other.c));
+      for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+        const x = grid[r][c];
+        if (x && x.type === other.type) set.add(k(r, c));
+      }
+      floatText(whale.r, whale.c, `🐋 巨鲸吸干 ${COINS[other.type].name}!`, '#59d2fe');
+    }
+    whale.special = null; // effect applied via the set; avoid double trigger
+    await cascade(set, null, []);
+    acted = true;
+  } else if (a.special && b.special) {
+    await cascade(new Set([k(a.r, a.c), k(b.r, b.c)]), null, []);
+    acted = true;
+  } else {
+    const runs = findRuns();
+    if (runs.length) {
+      await cascade(null, runs, [k(a.r, a.c), k(b.r, b.c)]);
+      acted = true;
+    }
+  }
+
+  if (!acted) {
+    swapPositions(a, b);
+    beep(180, .09);
+    await sleep(200);
+  } else {
+    spendGas();
+  }
+  busy = false;
+  afterTurn();
+}
+
+async function activateSpecial(t) {
+  if (busy || gameOver || !t.special) return;
+  busy = true;
+  clearSel();
+  await cascade(new Set([k(t.r, t.c)]), null, []);
+  spendGas();
+  busy = false;
+  afterTurn();
+}
+
+/* ---------- turn bookkeeping ---------- */
+function spendGas() {
+  gas--; movesDone++;
+  updateHud();
+  if (gas > 0 && movesDone % NEWS_EVERY === 0) newsEvent();
+}
+function updateHud() {
+  scoreEl.textContent = fmt(score);
+  gasEl.textContent = gas;
+  gasEl.classList.toggle('low', gas <= 5);
+  if (score > best) { best = score; localStorage.setItem('cc_best', best); }
+  bestEl.textContent = fmt(best);
+}
+function afterTurn() {
+  if (gas <= 0) return endGame();
+  if (!hasMove()) shuffleBoard(true);
+}
+
+function newsEvent() {
+  const candidates = [];
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    const t = grid[r][c];
+    if (t && !t.special) candidates.push(t);
+  }
+  if (!candidates.length) return;
+  const t = candidates[Math.floor(Math.random() * candidates.length)];
+  const roll = Math.random();
+  t.special = roll < .08 ? 'whale' : roll < .40 ? 'liq' : roll < .70 ? 'rocket' : 'pump';
+  if (t.special === 'whale') t.type = -1;
+  renderTile(t);
+  newsEl.textContent = NEWS_POOL[Math.floor(Math.random() * NEWS_POOL.length)];
+  newsEl.classList.add('show');
+  beep(660, .15, 'square'); beep(990, .2, 'square');
+  setTimeout(() => newsEl.classList.remove('show'), 2600);
+}
+
+function hasMove() {
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++)
+    if (grid[r][c] && grid[r][c].special) return true;
+  const swapCheck = (r1, c1, r2, c2) => {
+    const a = grid[r1][c1], b = grid[r2][c2];
+    [grid[r1][c1], grid[r2][c2]] = [b, a];
+    const found = findRuns().length > 0;
+    [grid[r1][c1], grid[r2][c2]] = [a, b];
+    return found;
+  };
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    if (c + 1 < SIZE && swapCheck(r, c, r, c + 1)) return true;
+    if (r + 1 < SIZE && swapCheck(r, c, r + 1, c)) return true;
+  }
+  return false;
+}
+
+function shuffleBoard(announce) {
+  const tiles = [];
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++)
+    if (grid[r][c] && !grid[r][c].special) tiles.push(grid[r][c]);
+  for (let tries = 0; tries < 80; tries++) {
+    tiles.forEach(t => { t.type = randType(); });
+    if (!findRuns().length && hasMove()) break;
+  }
+  tiles.forEach(renderTile);
+  if (announce) {
+    newsEl.textContent = '🔀 无路可走,市场重新洗牌!';
+    newsEl.classList.add('show');
+    setTimeout(() => newsEl.classList.remove('show'), 2200);
+  }
+}
+
+function endGame() {
+  gameOver = true;
+  const isRecord = score >= best && score > 0;
+  document.getElementById('over-score').textContent = fmt(score);
+  document.getElementById('over-record').style.display = isRecord ? 'block' : 'none';
+  document.getElementById('over-sub').textContent =
+    score >= 5000 ? '你就是传说中的聪明钱 🧠' :
+    score >= 2500 ? '这波操作稳如老狗 💪' :
+    score >= 1000 ? '小赚,落袋为安。' : '韭菜的自我修养,下把翻身。🥬';
+  beep(220, .3, 'sawtooth'); beep(150, .5, 'sawtooth');
+  document.getElementById('overlay').classList.add('show');
+}
+document.getElementById('restart').onclick = () => {
+  document.getElementById('overlay').classList.remove('show');
+  score = 0; gas = START_GAS; movesDone = 0; gameOver = false; busy = false; sel = null;
+  updateHud();
+  initBoard();
+};
+
+/* ---------- floating text ---------- */
+function floatText(r, c, txt, color) {
+  const s = document.createElement('span');
+  s.className = 'float-txt';
+  s.textContent = txt;
+  s.style.color = color || '#fff';
+  s.style.left = ((c + .5) * 100 / SIZE) + '%';
+  s.style.top = (r * 100 / SIZE) + '%';
+  boardEl.appendChild(s);
+  setTimeout(() => s.remove(), 1000);
+}
+
+/* ---------- input ---------- */
+function tileFromEvent(e) {
+  const el = e.target.closest('.tile');
+  return el && el._tile && grid[el._tile.r] && grid[el._tile.r][el._tile.c] === el._tile ? el._tile : null;
+}
+function clearSel() {
+  if (sel) sel.el.classList.remove('sel');
+  sel = null;
+}
+const adjacent = (a, b) => Math.abs(a.r - b.r) + Math.abs(a.c - b.c) === 1;
+
+boardEl.addEventListener('pointerdown', e => {
+  if (busy || gameOver) return;
+  const t = tileFromEvent(e);
+  if (!t) return;
+  dragStart = { x: e.clientX, y: e.clientY, tile: t };
+});
+boardEl.addEventListener('pointermove', e => {
+  if (!dragStart || busy) return;
+  const dx = e.clientX - dragStart.x, dy = e.clientY - dragStart.y;
+  if (Math.hypot(dx, dy) < 24) return;
+  const t = dragStart.tile;
+  const [dr, dc] = Math.abs(dx) > Math.abs(dy) ? [0, Math.sign(dx)] : [Math.sign(dy), 0];
+  dragStart = null;
+  if (inb(t.r + dr, t.c + dc)) doSwap(t, grid[t.r + dr][t.c + dc]);
+});
+boardEl.addEventListener('pointerup', e => {
+  if (!dragStart) return;
+  const t = tileFromEvent(e);
+  dragStart = null;
+  if (!t || busy || gameOver) return;
+  if (!sel) { sel = t; t.el.classList.add('sel'); beep(700, .04); return; }
+  if (sel === t) {
+    if (t.special) activateSpecial(t);
+    else clearSel();
+    return;
+  }
+  if (adjacent(sel, t)) { doSwap(sel, t); }
+  else { clearSel(); sel = t; t.el.classList.add('sel'); beep(700, .04); }
+});
+window.addEventListener('pointercancel', () => { dragStart = null; });
+
+/* ---------- go ---------- */
+updateHud();
+initBoard();
+</script>
+</body>
+</html>
