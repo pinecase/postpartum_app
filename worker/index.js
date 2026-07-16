@@ -363,6 +363,17 @@ app.patch('/api/tasks/:id', async (c) => {
       .bind(t.id)
       .run();
   }
+  const sets = [];
+  const vals = [];
+  for (const k of ['detail', 'internal_note', 'due_time', 'title']) {
+    if (k in b) {
+      sets.push(`${k} = ?`);
+      vals.push(b[k]);
+    }
+  }
+  if (sets.length) {
+    await c.env.DB.prepare(`UPDATE care_tasks SET ${sets.join(', ')} WHERE id = ?`).bind(...vals, t.id).run();
+  }
   const row = await c.env.DB.prepare(`SELECT * FROM care_tasks WHERE id = ?`).bind(t.id).first();
   return c.json(row);
 });
@@ -375,6 +386,34 @@ const RECORD_TABLES = {
   cares: 'baby_cares',
   mother_vitals: 'mother_vitals',
 };
+
+const RECORD_EDIT_FIELDS = {
+  feeds: ['time', 'method', 'amount_ml', 'duration_min', 'notes'],
+  diapers: ['time', 'type', 'stool_color', 'stool_consistency', 'notes'],
+  vitals: ['time', 'temperature_c', 'weight_g', 'jaundice_mg_dl', 'heart_rate', 'resp_rate', 'spo2', 'notes'],
+  cares: ['time', 'care_type', 'notes'],
+  mother_vitals: ['time', 'temperature_c', 'systolic', 'diastolic', 'pulse', 'lochia_amount', 'lochia_color', 'wound_status', 'breast_status', 'mood_score', 'pain_score', 'notes'],
+};
+
+app.patch('/api/records/:type/:id', async (c) => {
+  const type = c.req.param('type');
+  const table = RECORD_TABLES[type];
+  if (!table) return err(c, 400, '未知记录类型');
+  const body = await c.req.json();
+  const sets = [];
+  const vals = [];
+  for (const k of RECORD_EDIT_FIELDS[type]) {
+    if (k in body) {
+      sets.push(`${k} = ?`);
+      vals.push(body[k]);
+    }
+  }
+  if (!sets.length) return err(c, 400, '无可更新字段');
+  const id = c.req.param('id');
+  const r = await c.env.DB.prepare(`UPDATE ${table} SET ${sets.join(', ')} WHERE id = ?`).bind(...vals, id).run();
+  if (!r.meta.changes) return err(c, 404, '未找到记录');
+  return c.json(await c.env.DB.prepare(`SELECT * FROM ${table} WHERE id = ?`).bind(id).first());
+});
 
 app.delete('/api/records/:type/:id', async (c) => {
   const table = RECORD_TABLES[c.req.param('type')];
@@ -407,9 +446,9 @@ app.post('/api/handovers', async (c) => {
   const b = await c.req.json();
   if (!b.shift || !b.author || !b.content) return err(c, 400, '班次、记录人、内容必填');
   const r = await c.env.DB.prepare(
-    `INSERT INTO handovers (date, shift, author, content, created_at) VALUES (?, ?, ?, ?, ?)`
+    `INSERT INTO handovers (date, shift, author, content, created_at, room, mother_name, baby_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   )
-    .bind(b.date || todayStr(), b.shift, b.author, b.content, nowIso())
+    .bind(b.date || todayStr(), b.shift, b.author, b.content, nowIso(), b.room ?? null, b.mother_name ?? null, b.baby_name ?? null)
     .run();
   const row = await c.env.DB.prepare(`SELECT * FROM handovers WHERE id = ?`).bind(r.meta.last_row_id).first();
   return c.json(row, 201);

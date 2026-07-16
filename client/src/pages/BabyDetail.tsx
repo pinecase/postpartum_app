@@ -23,6 +23,7 @@ export default function BabyDetail() {
   const [data, setData] = useState<BabyDetailData | null>(null);
   const [tab, setTab] = useState<Tab>('feeds');
   const [modal, setModal] = useState<ModalKind>(null);
+  const [editRec, setEditRec] = useState<{ kind: Tab; rec: Record<string, unknown> } | null>(null);
   const [error, setError] = useState('');
 
   const load = useCallback(
@@ -195,7 +196,7 @@ export default function BabyDetail() {
                     <td>{f.amount_ml ? `${f.amount_ml} ml` : '—'}</td>
                     <td>{f.duration_min ? t('feeds.minutes', { n: f.duration_min }) : '—'}</td>
                     <td className="wrap">{f.notes || '—'} <PhotoBadge refs={refsFor('feeds', f.id)} /></td>
-                    <td>{f.recorded_by || '—'} <button className="row-del" onClick={() => delRecord('feeds', f.id)}>✕</button></td>
+                    <td>{f.recorded_by || '—'} <button className="row-del" onClick={() => setEditRec({ kind: 'feeds', rec: f as unknown as Record<string, unknown> })}>✎</button><button className="row-del" onClick={() => delRecord('feeds', f.id)}>✕</button></td>
                   </tr>
                 ))}
                 {data.feeds.length === 0 && <tr><td colSpan={6} className="empty">{t('common.none')}</td></tr>}
@@ -218,7 +219,7 @@ export default function BabyDetail() {
                     <td>{tv(d.stool_color)}</td>
                     <td>{tv(d.stool_consistency)}</td>
                     <td className="wrap">{d.notes || '—'} <PhotoBadge refs={refsFor('diapers', d.id)} /></td>
-                    <td>{d.recorded_by || '—'} <button className="row-del" onClick={() => delRecord('diapers', d.id)}>✕</button></td>
+                    <td>{d.recorded_by || '—'} <button className="row-del" onClick={() => setEditRec({ kind: 'diapers', rec: d as unknown as Record<string, unknown> })}>✎</button><button className="row-del" onClick={() => delRecord('diapers', d.id)}>✕</button></td>
                   </tr>
                 ))}
                 {data.diapers.length === 0 && <tr><td colSpan={6} className="empty">{t('common.none')}</td></tr>}
@@ -244,7 +245,7 @@ export default function BabyDetail() {
                     <td>{v.heart_rate ?? '—'}</td>
                     <td>{v.resp_rate ?? '—'}</td>
                     <td>{v.spo2 != null ? `${v.spo2}%` : '—'} <PhotoBadge refs={refsFor('vitals', v.id)} /></td>
-                    <td>{v.recorded_by || '—'} <button className="row-del" onClick={() => delRecord('vitals', v.id)}>✕</button></td>
+                    <td>{v.recorded_by || '—'} <button className="row-del" onClick={() => setEditRec({ kind: 'vitals', rec: v as unknown as Record<string, unknown> })}>✎</button><button className="row-del" onClick={() => delRecord('vitals', v.id)}>✕</button></td>
                   </tr>
                 ))}
                 {data.vitals.length === 0 && <tr><td colSpan={8} className="empty">{t('common.none')}</td></tr>}
@@ -265,7 +266,7 @@ export default function BabyDetail() {
                     <td>{fmtTime(c.time)}</td>
                     <td>{tv(c.care_type)}</td>
                     <td className="wrap">{c.notes || '—'} <PhotoBadge refs={refsFor('cares', c.id)} /></td>
-                    <td>{c.recorded_by || '—'} <button className="row-del" onClick={() => delRecord('cares', c.id)}>✕</button></td>
+                    <td>{c.recorded_by || '—'} <button className="row-del" onClick={() => setEditRec({ kind: 'cares', rec: c as unknown as Record<string, unknown> })}>✎</button><button className="row-del" onClick={() => delRecord('cares', c.id)}>✕</button></td>
                   </tr>
                 ))}
                 {data.cares.length === 0 && <tr><td colSpan={4} className="empty">{t('common.none')}</td></tr>}
@@ -287,40 +288,56 @@ export default function BabyDetail() {
           }}
         />
       )}
+      {editRec && (
+        <RecordModal
+          kind={editRec.kind}
+          babyId={data.id}
+          recordedBy={current}
+          editing={editRec.rec}
+          onClose={() => setEditRec(null)}
+          onSaved={() => {
+            setEditRec(null);
+            load();
+          }}
+        />
+      )}
     </>
   );
 }
 
 function RecordModal({
-  kind, babyId, recordedBy, onClose, onSaved,
+  kind, babyId, recordedBy, onClose, onSaved, editing,
 }: {
   kind: Tab;
   babyId: number;
   recordedBy: string;
   onClose: () => void;
   onSaved: () => void;
+  editing?: Record<string, unknown>;
 }) {
   const { t, tv } = useI18n();
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const [photos, setPhotos] = useState<PhotoDraft[]>([]);
+  const ev = (k: string) => (editing?.[k] != null ? String(editing[k]) : undefined);
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
-    const body: Record<string, unknown> = { recorded_by: recordedBy };
+    const body: Record<string, unknown> = editing ? {} : { recorded_by: recordedBy };
     fd.forEach((v, k) => {
       if (v !== '') body[k] = v;
     });
     if (body.time) body.time = new Date(String(body.time)).toISOString();
-    for (const numKey of ['amount_ml', 'duration_min', 'temperature_c', 'weight_g', 'jaundice_mg_dl', 'heart_rate', 'resp_rate']) {
+    for (const numKey of ['amount_ml', 'duration_min', 'temperature_c', 'weight_g', 'jaundice_mg_dl', 'heart_rate', 'resp_rate', 'spo2']) {
       if (body[numKey] != null) body[numKey] = Number(body[numKey]);
     }
-    if (photos.length) body.photos = photos.map((p) => ({ data: p.data, mime: p.mime }));
+    if (!editing && photos.length) body.photos = photos.map((p) => ({ data: p.data, mime: p.mime }));
     setBusy(true);
     setErr('');
     try {
-      await api.post(`/api/babies/${babyId}/${kind}`, body);
+      if (editing) await api.patch(`/api/records/${kind}/${editing.id}`, body);
+      else await api.post(`/api/babies/${babyId}/${kind}`, body);
       onSaved();
     } catch (e) {
       setErr((e as Error).message);
@@ -344,66 +361,72 @@ function RecordModal({
         <div className="form-grid">
           <div className="field">
             <label>{t('common.time')}</label>
-            <input type="datetime-local" name="time" defaultValue={localDatetimeValue()} required />
+            <input
+              type="datetime-local"
+              name="time"
+              defaultValue={editing ? localDatetimeValue(new Date(String(editing.time))) : localDatetimeValue()}
+              required
+            />
           </div>
           {kind === 'feeds' && (
             <>
               <div className="field">
                 <label>{t('feeds.methodRequired')}</label>
-                <select name="method" required>
+                <select name="method" required defaultValue={ev('method')}>
                   {['母乳亲喂', '瓶喂母乳', '配方奶', '混合喂养'].map(opt)}
                 </select>
               </div>
-              <div className="field"><label>{t('feeds.amountMl')}</label><input type="number" name="amount_ml" min={0} /></div>
-              <div className="field"><label>{t('feeds.durationMin')}</label><input type="number" name="duration_min" min={0} /></div>
+              <div className="field"><label>{t('feeds.amountMl')}</label><input type="number" name="amount_ml" min={0} defaultValue={ev('amount_ml')} /></div>
+              <div className="field"><label>{t('feeds.durationMin')}</label><input type="number" name="duration_min" min={0} defaultValue={ev('duration_min')} /></div>
             </>
           )}
           {kind === 'diapers' && (
             <>
               <div className="field">
                 <label>{t('diapers.typeRequired')}</label>
-                <select name="type" required>
+                <select name="type" required defaultValue={ev('type')}>
                   {['尿', '便', '尿+便'].map(opt)}
                 </select>
               </div>
               <div className="field">
                 <label>{t('diapers.stoolColor')}</label>
-                <select name="stool_color" defaultValue="">
+                <select name="stool_color" defaultValue={ev('stool_color') ?? ''}>
                   <option value="">—</option>
                   {['黄色', '黄绿色', '绿色', '墨绿色（胎便）', '灰白色'].map(opt)}
                 </select>
               </div>
               <div className="field">
                 <label>{t('diapers.consistency')}</label>
-                <select name="stool_consistency" defaultValue="">
+                <select name="stool_consistency" defaultValue={ev('stool_consistency') ?? ''}>
                   <option value="">—</option>
-                  {['糊状', '稀水样', '颗粒状', '成形'].map(opt)}
+                  {['糊状', '稀水样', '颗粒状', '成形', '正常', '偏硬', '水样', '有异味'].map(opt)}
                 </select>
               </div>
             </>
           )}
           {kind === 'vitals' && (
             <>
-              <div className="field"><label>{t('vitals.tempC')}</label><input type="number" name="temperature_c" step="0.1" min={30} max={43} /></div>
-              <div className="field"><label>{t('vitals.weightG')}</label><input type="number" name="weight_g" min={0} /></div>
-              <div className="field"><label>{t('vitals.jaundiceUnit')}</label><input type="number" name="jaundice_mg_dl" step="0.1" min={0} /></div>
-              <div className="field"><label>{t('vitals.heartRateUnit')}</label><input type="number" name="heart_rate" min={0} /></div>
-              <div className="field"><label>{t('vitals.respUnit')}</label><input type="number" name="resp_rate" min={0} /></div>
+              <div className="field"><label>{t('vitals.tempC')}</label><input type="number" name="temperature_c" step="0.1" min={30} max={43} defaultValue={ev('temperature_c')} /></div>
+              <div className="field"><label>{t('vitals.weightG')}</label><input type="number" name="weight_g" min={0} defaultValue={ev('weight_g')} /></div>
+              <div className="field"><label>{t('vitals.jaundiceUnit')}</label><input type="number" name="jaundice_mg_dl" step="0.1" min={0} defaultValue={ev('jaundice_mg_dl')} /></div>
+              <div className="field"><label>{t('vitals.heartRateUnit')}</label><input type="number" name="heart_rate" min={0} defaultValue={ev('heart_rate')} /></div>
+              <div className="field"><label>{t('vitals.respUnit')}</label><input type="number" name="resp_rate" min={0} defaultValue={ev('resp_rate')} /></div>
+              <div className="field"><label>{t('tasks.spo2')}</label><input type="number" name="spo2" min={0} max={100} defaultValue={ev('spo2')} /></div>
             </>
           )}
           {kind === 'cares' && (
             <div className="field">
               <label>{t('cares.typeRequired')}</label>
-              <select name="care_type" required>
-                {['洗澡', '抚触', '脐部护理', '臀部护理', '游泳', '晒太阳/光照', '其他'].map(opt)}
-              </select>
+              <input name="care_type" required defaultValue={ev('care_type') ?? '洗澡'} />
             </div>
           )}
-          <div className="field full"><label>{t('common.notes')}</label><textarea name="notes" /></div>
-          <div className="field full">
-            <label>{t('photo.photos')}</label>
-            <PhotoInput photos={photos} onChange={setPhotos} />
-          </div>
+          <div className="field full"><label>{t('common.notes')}</label><textarea name="notes" defaultValue={ev('notes')} /></div>
+          {!editing && (
+            <div className="field full">
+              <label>{t('photo.photos')}</label>
+              <PhotoInput photos={photos} onChange={setPhotos} />
+            </div>
+          )}
         </div>
         {err && <div className="form-error">{err}</div>}
         <div className="actions">

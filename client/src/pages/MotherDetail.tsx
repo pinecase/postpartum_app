@@ -16,6 +16,7 @@ export default function MotherDetail() {
   const { t, tv } = useI18n();
   const [data, setData] = useState<MotherDetailData | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [editRec, setEditRec] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState('');
 
   const load = useCallback(
@@ -159,7 +160,7 @@ export default function MotherDetail() {
                     {v.notes || '—'}{' '}
                     <PhotoBadge refs={data.photos.filter((p) => p.record_type === 'mother_vitals' && p.record_id === v.id)} />
                   </td>
-                  <td>{v.recorded_by || '—'} <button className="row-del" onClick={() => delRecord(v.id)}>✕</button></td>
+                  <td>{v.recorded_by || '—'} <button className="row-del" onClick={() => setEditRec(v as unknown as Record<string, unknown>)}>✎</button><button className="row-del" onClick={() => delRecord(v.id)}>✕</button></td>
                 </tr>
               ))}
               {data.vitals.length === 0 && <tr><td colSpan={11} className="empty">{t('common.none')}</td></tr>}
@@ -179,27 +180,41 @@ export default function MotherDetail() {
           }}
         />
       )}
+      {editRec && (
+        <VitalModal
+          motherId={data.id}
+          recordedBy={current}
+          editing={editRec}
+          onClose={() => setEditRec(null)}
+          onSaved={() => {
+            setEditRec(null);
+            load();
+          }}
+        />
+      )}
     </>
   );
 }
 
 function VitalModal({
-  motherId, recordedBy, onClose, onSaved,
+  motherId, recordedBy, onClose, onSaved, editing,
 }: {
   motherId: number;
   recordedBy: string;
   onClose: () => void;
   onSaved: () => void;
+  editing?: Record<string, unknown>;
 }) {
   const { t, tv } = useI18n();
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const [photos, setPhotos] = useState<PhotoDraft[]>([]);
+  const ev = (k: string) => (editing?.[k] != null ? String(editing[k]) : undefined);
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
-    const body: Record<string, unknown> = { recorded_by: recordedBy };
+    const body: Record<string, unknown> = editing ? {} : { recorded_by: recordedBy };
     fd.forEach((v, k) => {
       if (v !== '') body[k] = v;
     });
@@ -207,11 +222,12 @@ function VitalModal({
     for (const numKey of ['temperature_c', 'systolic', 'diastolic', 'pulse', 'mood_score', 'pain_score']) {
       if (body[numKey] != null) body[numKey] = Number(body[numKey]);
     }
-    if (photos.length) body.photos = photos.map((p) => ({ data: p.data, mime: p.mime }));
+    if (!editing && photos.length) body.photos = photos.map((p) => ({ data: p.data, mime: p.mime }));
     setBusy(true);
     setErr('');
     try {
-      await api.post(`/api/mothers/${motherId}/vitals`, body);
+      if (editing) await api.patch(`/api/records/mother_vitals/${editing.id}`, body);
+      else await api.post(`/api/mothers/${motherId}/vitals`, body);
       onSaved();
     } catch (e) {
       setErr((e as Error).message);
@@ -227,47 +243,54 @@ function VitalModal({
         <div className="form-grid">
           <div className="field">
             <label>{t('common.time')}</label>
-            <input type="datetime-local" name="time" defaultValue={localDatetimeValue()} required />
+            <input
+              type="datetime-local"
+              name="time"
+              defaultValue={editing ? localDatetimeValue(new Date(String(editing.time))) : localDatetimeValue()}
+              required
+            />
           </div>
-          <div className="field"><label>{t('vitals.tempC')}</label><input type="number" name="temperature_c" step="0.1" min={34} max={43} /></div>
-          <div className="field"><label>{t('mother.sys')}</label><input type="number" name="systolic" min={0} /></div>
-          <div className="field"><label>{t('mother.dia')}</label><input type="number" name="diastolic" min={0} /></div>
-          <div className="field"><label>{t('mother.pulseUnit')}</label><input type="number" name="pulse" min={0} /></div>
+          <div className="field"><label>{t('vitals.tempC')}</label><input type="number" name="temperature_c" step="0.1" min={34} max={43} defaultValue={ev('temperature_c')} /></div>
+          <div className="field"><label>{t('mother.sys')}</label><input type="number" name="systolic" min={0} defaultValue={ev('systolic')} /></div>
+          <div className="field"><label>{t('mother.dia')}</label><input type="number" name="diastolic" min={0} defaultValue={ev('diastolic')} /></div>
+          <div className="field"><label>{t('mother.pulseUnit')}</label><input type="number" name="pulse" min={0} defaultValue={ev('pulse')} /></div>
           <div className="field">
             <label>{t('mother.lochiaAmount')}</label>
-            <select name="lochia_amount" defaultValue="">
+            <select name="lochia_amount" defaultValue={ev('lochia_amount') ?? ''}>
               <option value="">—</option>
               {['少', '中', '多'].map(opt)}
             </select>
           </div>
           <div className="field">
             <label>{t('mother.lochiaColor')}</label>
-            <select name="lochia_color" defaultValue="">
+            <select name="lochia_color" defaultValue={ev('lochia_color') ?? ''}>
               <option value="">—</option>
               {['鲜红', '暗红', '淡红', '白色'].map(opt)}
             </select>
           </div>
-          <div className="field"><label>{t('mother.woundStatus')}</label><input name="wound_status" placeholder={t('mother.woundPlaceholder')} /></div>
-          <div className="field"><label>{t('mother.breastStatus')}</label><input name="breast_status" placeholder={t('mother.breastPlaceholder')} /></div>
+          <div className="field"><label>{t('mother.woundStatus')}</label><input name="wound_status" placeholder={t('mother.woundPlaceholder')} defaultValue={ev('wound_status')} /></div>
+          <div className="field"><label>{t('mother.breastStatus')}</label><input name="breast_status" placeholder={t('mother.breastPlaceholder')} defaultValue={ev('breast_status')} /></div>
           <div className="field">
             <label>{t('mother.moodScore')}</label>
-            <select name="mood_score" defaultValue="">
+            <select name="mood_score" defaultValue={ev('mood_score') ?? ''}>
               <option value="">—</option>
               {[1, 2, 3, 4, 5].map((n) => <option key={n}>{n}</option>)}
             </select>
           </div>
           <div className="field">
             <label>{t('mother.painScore')}</label>
-            <select name="pain_score" defaultValue="">
+            <select name="pain_score" defaultValue={ev('pain_score') ?? ''}>
               <option value="">—</option>
               {Array.from({ length: 11 }, (_, n) => <option key={n}>{n}</option>)}
             </select>
           </div>
-          <div className="field full"><label>{t('common.notes')}</label><textarea name="notes" /></div>
-          <div className="field full">
-            <label>{t('photo.photos')}</label>
-            <PhotoInput photos={photos} onChange={setPhotos} />
-          </div>
+          <div className="field full"><label>{t('common.notes')}</label><textarea name="notes" defaultValue={ev('notes')} /></div>
+          {!editing && (
+            <div className="field full">
+              <label>{t('photo.photos')}</label>
+              <PhotoInput photos={photos} onChange={setPhotos} />
+            </div>
+          )}
         </div>
         {err && <div className="form-error">{err}</div>}
         <div className="actions">

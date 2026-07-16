@@ -42,6 +42,13 @@ const isMixed = (fv: Record<string, string>) => fv.method === '混合喂养';
 const isBottle = (fv: Record<string, string>) => fv.method === '瓶喂母乳' || fv.method === '配方奶';
 const hasStool = (fv: Record<string, string>) => !!fv.stool && fv.stool !== '无';
 
+const URINE_STOOL: FieldDef[] = [
+  sel('urine', 'tasks.urineAmt', '小便量', ['无', '少', '中', '多']),
+  sel('stool', 'tasks.stoolAmt', '大便量', ['无', '少', '中', '多']),
+];
+
+const CLEAN_OPTS = ['已清洁', '有分泌物', '红肿'];
+
 const TYPE_FIELDS: Record<string, FieldDef[]> = {
   '喂奶时间': [
     sel('method', 'feeds.method', '方式', ['母乳亲喂', '瓶喂母乳', '配方奶', '混合喂养']),
@@ -51,12 +58,10 @@ const TYPE_FIELDS: Record<string, FieldDef[]> = {
     num('bm', 'tasks.bmMl', '母乳', 'ml', undefined, isMixed),
     num('fm', 'tasks.fmMl', '配方奶', 'ml', undefined, isMixed),
     num('amount', 'feeds.amountMl', '奶量', 'ml', undefined, isBottle),
-    num('temp', 'vitals.tempC', '体温', '°C', '0.1'),
-    num('jaundice', 'vitals.jaundiceUnit', '黄疸', 'mg/dL', '0.1'),
+    ...URINE_STOOL,
   ],
   '换尿布': [
-    sel('urine', 'tasks.urineAmt', '小便量', ['无', '少', '中', '多']),
-    sel('stool', 'tasks.stoolAmt', '大便量', ['无', '少', '中', '多']),
+    ...URINE_STOOL,
     sel('consistency', 'diapers.consistency', '性状', ['正常', '偏硬', '水样', '成形', '有异味'], hasStool),
     sel('color', 'diapers.stoolColor', '颜色', ['黄色', '黄绿色', '绿色', '墨绿色（胎便）', '灰白色'], hasStool),
   ],
@@ -65,26 +70,36 @@ const TYPE_FIELDS: Record<string, FieldDef[]> = {
     num('rr', 'vitals.respUnit', '呼吸', '/min'),
     num('spo2', 'tasks.spo2', 'SpO₂', '%'),
   ],
+  // 洗澡：与 mother care 一致的结构化护理清单
   '洗澡记录': [
     num('weight', 'vitals.weightG', '体重', 'g'),
     num('jaundice', 'vitals.jaundiceUnit', '黄疸', 'mg/dL', '0.1'),
+    sel('oral', 'tasks.oral', '口腔', CLEAN_OPTS),
+    sel('nasal', 'tasks.nasal', '鼻腔', CLEAN_OPTS),
+    sel('eye', 'tasks.eye', '眼部', CLEAN_OPTS),
+    sel('ear', 'tasks.ear', '耳部', CLEAN_OPTS),
+    sel('cord', 'tasks.cord', '脐部', ['干燥正常', '红肿', '渗液', '已消毒']),
   ],
   '晾臀': [tim('start', 'tasks.startTime', '开始'), tim('end', 'tasks.endTime', '结束')],
-  '母婴同室': [sel('inout', 'tasks.inout', '入/出', ['入室', '出室'])],
+  '母婴同室': [sel('inout', 'tasks.inout', '入/出', ['入室', '出室']), ...URINE_STOOL],
 };
+
+// 洗澡清单类字段：合成文字时带上部位名（如「口腔·已清洁」）
+const LABELED_FIELDS = new Set(['oral', 'nasal', 'eye', 'ear', 'cord']);
+const labelWord: Record<string, string> = { oral: '口腔', nasal: '鼻腔', eye: '眼部', ear: '耳部', cord: '脐部' };
 
 // 补充标注：定性内容点选填入说明
 const DETAIL_PRESETS: Record<string, string[]> = {
-  '喂奶时间': ['拍嗝', '吐奶', '溢奶', '小便', '大便', '腹部按摩'],
-  '换尿布': ['晾臀', '尿布疹', '涂护臀膏'],
+  '喂奶时间': ['拍嗝', '吐奶', '溢奶', '腹部按摩'],
+  '换尿布': ['晾臀', '尿布疹', '涂护臀膏', '吐奶'],
   '体征测量': [],
-  '洗澡记录': ['吐奶', '口腔清洁', '鼻腔清洁', '眼部清洁', '耳部清洁', '脐部正常', '脐部红肿', '腹部按摩', 'Jaundice Bath', 'JYH Bath', 'Beauty Bath', 'Bath Class'],
+  '洗澡记录': ['吐奶', '腹部按摩', 'Jaundice Bath', 'JYH Bath', 'Beauty Bath', 'Bath Class'],
   '晾臀': ['红臀观察', '涂护臀膏'],
-  '母婴同室': ['Review', '协助亲喂', '瓶喂 1 set', '换尿布 1 set', '哄睡教学', '办护照', 'SG Baby', 'Prayer'],
+  '母婴同室': ['Review', '协助亲喂', '瓶喂 1 set', '换尿布 1 set', '哄睡教学', '办护照', 'SG Baby', 'Prayer', '吐奶'],
   '脚部按摩': ['已完成'],
   '鼻泪管按摩': ['已完成', '分泌物增多', '已清洁'],
   '补充剂/用药': ['维生素D', '益生菌', '退黄药物', '遵医嘱用药'],
-  '护理记录/观察': ['精神状态好', '睡眠安稳', '哭闹较多', '吐奶', '溢奶', '皮肤黄染', '皮疹', '脐部干燥'],
+  '护理记录/观察': [], // Nurse note：只用内部备注，不写档案
   '汇总统计': [],
   '宝宝拍照': ['日常照', '伤口/皮肤记录', '黄疸对比照'],
   '其他': [],
@@ -112,6 +127,9 @@ function buildRecordSyncs(s: SyncInput): { url: string; payload: Record<string, 
   const base = { time: s.timeIso, recorded_by: s.recordedBy };
   const out: { url: string; payload: Record<string, unknown> }[] = [];
 
+  // Nurse note（护理记录/观察）：仅内部备注，不写入档案
+  if (s.taskType === '护理记录/观察') return out;
+
   if (s.subjectType === 'mother') {
     if (s.taskType === '体征测量' && hasAnyField) {
       out.push({
@@ -123,6 +141,26 @@ function buildRecordSyncs(s: SyncInput): { url: string; payload: Record<string, 
   }
 
   const B = (p: string) => `/api/babies/${s.subjectId}/${p}`;
+
+  // 小便/大便量下拉（喂奶/母婴同室/换尿布共用）→ 大小便记录
+  const pushDiaperFromAmounts = (withStoolDetail: boolean) => {
+    const urine = v('urine') && v('urine') !== '无';
+    const stool = hasStool(s.fieldValues);
+    if (!urine && !stool) return;
+    const amt: string[] = [];
+    if (urine) amt.push(`小便·${v('urine')}`);
+    if (stool) amt.push(`大便·${v('stool')}`);
+    out.push({
+      url: B('diapers'),
+      payload: {
+        ...base,
+        type: urine && stool ? '尿+便' : urine ? '尿' : '便',
+        stool_consistency: withStoolDetail && stool ? v('consistency') || null : null,
+        stool_color: withStoolDetail && stool ? v('color') || null : null,
+        notes: amt.join('、') || null,
+      },
+    });
+  };
 
   if (s.taskType === '喂奶时间' && v('method')) {
     const extra: string[] = [];
@@ -140,40 +178,30 @@ function buildRecordSyncs(s: SyncInput): { url: string; payload: Record<string, 
         notes: [...extra, s.notes].filter(Boolean).join('、') || null,
       },
     });
-    if (v('temp') || v('jaundice')) {
-      out.push({ url: B('vitals'), payload: { ...base, temperature_c: n('temp'), jaundice_mg_dl: n('jaundice') } });
-    }
-    const urine = s.notes.includes('小便');
-    const stool = s.notes.includes('大便');
-    if (urine || stool) {
-      out.push({
-        url: B('diapers'),
-        payload: { ...base, type: urine && stool ? '尿+便' : urine ? '尿' : '便' },
-      });
-    }
-  } else if (s.taskType === '换尿布' && ((v('urine') && v('urine') !== '无') || hasStool(s.fieldValues))) {
-    const urine = v('urine') && v('urine') !== '无';
-    const stool = hasStool(s.fieldValues);
-    const amt: string[] = [];
-    if (urine) amt.push(`小便·${v('urine')}`);
-    if (stool) amt.push(`大便·${v('stool')}`);
+    pushDiaperFromAmounts(false);
+  } else if (s.taskType === '换尿布') {
+    pushDiaperFromAmounts(true);
+  } else if (s.taskType === '母婴同室' && hasContent) {
+    const inout = v('inout') ? [v('inout')] : [];
     out.push({
-      url: B('diapers'),
-      payload: {
-        ...base,
-        type: urine && stool ? '尿+便' : urine ? '尿' : '便',
-        stool_consistency: stool ? v('consistency') || null : null,
-        stool_color: stool ? v('color') || null : null,
-        notes: [...amt, s.notes].filter(Boolean).join('、') || null,
-      },
+      url: B('cares'),
+      payload: { ...base, care_type: s.title, notes: [...inout, s.notes].filter(Boolean).join('、') || null },
     });
+    pushDiaperFromAmounts(false);
   } else if (s.taskType === '体征测量' && hasAnyField) {
     out.push({
       url: B('vitals'),
       payload: { ...base, heart_rate: n('hr'), resp_rate: n('rr'), spo2: n('spo2'), notes: s.notes || null },
     });
   } else if (s.taskType === '洗澡记录' && hasContent) {
-    out.push({ url: B('cares'), payload: { ...base, care_type: s.title, notes: s.notes || null } });
+    const checklist: string[] = [];
+    for (const id of ['oral', 'nasal', 'eye', 'ear', 'cord']) {
+      if (v(id)) checklist.push(`${labelWord[id]}·${v(id)}`);
+    }
+    out.push({
+      url: B('cares'),
+      payload: { ...base, care_type: s.title, notes: [...checklist, s.notes].filter(Boolean).join('、') || null },
+    });
     if (v('weight') || v('jaundice')) {
       out.push({ url: B('vitals'), payload: { ...base, weight_g: n('weight'), jaundice_mg_dl: n('jaundice') } });
     }
@@ -184,6 +212,7 @@ function buildRecordSyncs(s: SyncInput): { url: string; payload: Record<string, 
       if (!val || val === '无') continue;
       if (f.kind === 'number') extraParts.push(`${f.short} ${val}${f.unit || ''}`);
       else if (f.kind === 'time') extraParts.push(`${f.short} ${val}`);
+      else if (LABELED_FIELDS.has(f.id)) extraParts.push(`${labelWord[f.id]}·${val}`);
       else extraParts.push(val);
     }
     out.push({
@@ -202,6 +231,7 @@ export default function Tasks() {
   const [tasks, setTasks] = useState<CareTask[]>([]);
   const [filter, setFilter] = useState<Filter>('待办');
   const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<CareTask | null>(null);
 
   const load = useCallback(() => {
     const q = filter === '全部' ? '' : `?status=${encodeURIComponent(filter)}`;
@@ -271,6 +301,7 @@ export default function Tasks() {
             ) : (
               <button className="btn btn-sm" onClick={() => complete(tk)}>{t('tasks.complete')}</button>
             )}
+            <button className="btn btn-sm" title={t('common.edit')} onClick={() => setEditing(tk)}>✎</button>
             <button className="btn btn-sm" title={t('tasks.deleteTask')} onClick={() => remove(tk)}>✕</button>
           </div>
         ))}
@@ -287,7 +318,83 @@ export default function Tasks() {
           }}
         />
       )}
+      {editing && (
+        <EditTaskModal
+          task={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            load();
+          }}
+        />
+      )}
     </>
+  );
+}
+
+// 编辑任务：改说明/内部备注/计划时间（同步过的档案记录请在宝宝页单独编辑）
+function EditTaskModal({
+  task, onClose, onSaved,
+}: {
+  task: CareTask;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { t, tv } = useI18n();
+  const [detail, setDetail] = useState(task.detail || '');
+  const [internalNote, setInternalNote] = useState(task.internal_note || '');
+  const due = new Date(task.due_time);
+  const [dueTime, setDueTime] = useState(`${pad(due.getHours())}:${pad(due.getMinutes())}`);
+  const [dueDate, setDueDate] = useState(
+    `${due.getFullYear()}-${pad(due.getMonth() + 1)}-${pad(due.getDate())}`
+  );
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setBusy(true);
+    setErr('');
+    try {
+      await api.patch(`/api/tasks/${task.id}`, {
+        detail: detail.trim() || null,
+        internal_note: internalNote.trim() || null,
+        due_time: new Date(`${dueDate}T${dueTime}`).toISOString(),
+      });
+      onSaved();
+    } catch (e2) {
+      setErr((e2 as Error).message);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal title={`${t('common.edit')} · ${tv(task.title)}`} onClose={onClose}>
+      <form onSubmit={submit}>
+        <div className="form-grid">
+          <div className="field">
+            <label>{t('tasks.dueTime')}</label>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input type="time" value={dueTime} onChange={(e) => setDueTime(e.target.value)} required style={{ flex: 1 }} />
+              <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required style={{ flex: 1.4 }} />
+            </div>
+          </div>
+          <div className="field full">
+            <label>{t('tasks.detail')}</label>
+            <textarea value={detail} onChange={(e) => setDetail(e.target.value)} rows={3} />
+          </div>
+          <div className="field full">
+            <label>{t('tasks.internalNote')}</label>
+            <textarea value={internalNote} onChange={(e) => setInternalNote(e.target.value)} rows={2} />
+          </div>
+        </div>
+        {err && <div className="form-error">{err}</div>}
+        <div className="actions">
+          <button type="button" className="btn" onClick={onClose}>{t('common.cancel')}</button>
+          <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? t('common.saving') : t('common.save')}</button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -398,6 +505,32 @@ function TaskModal({
     });
   };
 
+  // 自定义药品/用品（本机记住，供下次点选）
+  const [customMeds, setCustomMeds] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('custom_meds') || '[]');
+    } catch {
+      return [];
+    }
+  });
+  const [newMed, setNewMed] = useState('');
+  const addCustomMed = () => {
+    const name = newMed.trim();
+    if (!name) return;
+    if (!customMeds.includes(name)) {
+      const next = [...customMeds, name];
+      setCustomMeds(next);
+      localStorage.setItem('custom_meds', JSON.stringify(next));
+    }
+    if (!detail.includes(name)) toggleChip(name);
+    setNewMed('');
+  };
+
+  const chips = taskType === '补充剂/用药'
+    ? [...(DETAIL_PRESETS[taskType] || []), ...customMeds]
+    : DETAIL_PRESETS[taskType] || [];
+  const isNurseNote = taskType === '护理记录/观察';
+
   const visibleFields = (TYPE_FIELDS[taskType] || []).filter((f) => !f.showIf || f.showIf(fieldValues));
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
@@ -409,6 +542,7 @@ function TaskModal({
       if (!v || v === '无') continue;
       if (f.kind === 'number') parts.push(`${tv(f.short)} ${v}${f.unit || ''}`);
       else if (f.kind === 'time') parts.push(`${tv(f.short)} ${v}`);
+      else if (LABELED_FIELDS.has(f.id)) parts.push(`${tv(labelWord[f.id])}·${tv(v)}`);
       else if (f.kind === 'select') parts.push(tv(v));
       else parts.push(v);
     }
@@ -523,11 +657,11 @@ function TaskModal({
               </button>
             </div>
           )}
-          {DETAIL_PRESETS[taskType]?.length > 0 && (
+          {chips.length > 0 && (
             <div className="field full">
               <label>{t('tasks.quickDetail')}</label>
               <div className="chip-row">
-                {DETAIL_PRESETS[taskType].map((chip) => (
+                {chips.map((chip) => (
                   <button
                     type="button"
                     key={chip}
@@ -540,18 +674,30 @@ function TaskModal({
               </div>
             </div>
           )}
-          <div className="field full">
-            <label>{t('tasks.detail')}</label>
-            <textarea value={detail} onChange={(e) => setDetail(e.target.value)} rows={3} />
-            <VoiceInput onText={(text) => setDetail((d) => (d ? `${d} ${text}` : text))} />
-          </div>
+          {taskType === '补充剂/用药' && (
+            <div className="field full">
+              <label>{t('tasks.addCustomMed')}</label>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input value={newMed} onChange={(e) => setNewMed(e.target.value)} style={{ flex: 1 }} />
+                <button type="button" className="btn" onClick={addCustomMed}>＋</button>
+              </div>
+            </div>
+          )}
+          {!isNurseNote && (
+            <div className="field full">
+              <label>{t('tasks.detail')}</label>
+              <textarea value={detail} onChange={(e) => setDetail(e.target.value)} rows={3} />
+              <VoiceInput onText={(text) => setDetail((d) => (d ? `${d} ${text}` : text))} />
+            </div>
+          )}
           <div className="field full">
             <label>{t('photo.photos')}</label>
             <PhotoInput photos={photos} onChange={setPhotos} />
           </div>
           <div className="field full">
             <label>{t('tasks.internalNote')}</label>
-            <textarea value={internalNote} onChange={(e) => setInternalNote(e.target.value)} rows={2} />
+            <textarea value={internalNote} onChange={(e) => setInternalNote(e.target.value)} rows={isNurseNote ? 4 : 2} />
+            {isNurseNote && <VoiceInput onText={(text) => setInternalNote((d) => (d ? `${d} ${text}` : text))} />}
           </div>
         </div>
         {err && <div className="form-error">{err}</div>}

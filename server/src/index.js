@@ -317,6 +317,16 @@ app.patch('/api/tasks/:id', (req, res) => {
   } else if (req.body.status === '待办') {
     db.prepare(`UPDATE care_tasks SET status = '待办', completed_by = NULL, completed_at = NULL WHERE id = ?`).run(t.id);
   }
+  // 内容编辑（改错重填）
+  const sets = [];
+  const vals = [];
+  for (const k of ['detail', 'internal_note', 'due_time', 'title']) {
+    if (k in req.body) {
+      sets.push(`${k} = ?`);
+      vals.push(req.body[k]);
+    }
+  }
+  if (sets.length) db.prepare(`UPDATE care_tasks SET ${sets.join(', ')} WHERE id = ?`).run(...vals, t.id);
   res.json(db.prepare(`SELECT * FROM care_tasks WHERE id = ?`).get(t.id));
 });
 
@@ -328,6 +338,33 @@ const RECORD_TABLES = {
   cares: 'baby_cares',
   mother_vitals: 'mother_vitals',
 };
+
+// 各记录类型允许编辑的字段
+const RECORD_EDIT_FIELDS = {
+  feeds: ['time', 'method', 'amount_ml', 'duration_min', 'notes'],
+  diapers: ['time', 'type', 'stool_color', 'stool_consistency', 'notes'],
+  vitals: ['time', 'temperature_c', 'weight_g', 'jaundice_mg_dl', 'heart_rate', 'resp_rate', 'spo2', 'notes'],
+  cares: ['time', 'care_type', 'notes'],
+  mother_vitals: ['time', 'temperature_c', 'systolic', 'diastolic', 'pulse', 'lochia_amount', 'lochia_color', 'wound_status', 'breast_status', 'mood_score', 'pain_score', 'notes'],
+};
+
+app.patch('/api/records/:type/:id', (req, res) => {
+  const table = RECORD_TABLES[req.params.type];
+  const allowed = RECORD_EDIT_FIELDS[req.params.type];
+  if (!table) return res.status(400).json({ error: '未知记录类型' });
+  const sets = [];
+  const vals = [];
+  for (const k of allowed) {
+    if (k in req.body) {
+      sets.push(`${k} = ?`);
+      vals.push(req.body[k]);
+    }
+  }
+  if (!sets.length) return res.status(400).json({ error: '无可更新字段' });
+  const r = db.prepare(`UPDATE ${table} SET ${sets.join(', ')} WHERE id = ?`).run(...vals, req.params.id);
+  if (!r.changes) return res.status(404).json({ error: '未找到记录' });
+  res.json(db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(req.params.id));
+});
 
 app.delete('/api/records/:type/:id', (req, res) => {
   const table = RECORD_TABLES[req.params.type];
@@ -351,10 +388,10 @@ app.get('/api/handovers', (req, res) => {
 });
 
 app.post('/api/handovers', (req, res) => {
-  const { date, shift, author, content } = req.body;
+  const { date, shift, author, content, room, mother_name, baby_name } = req.body;
   if (!shift || !author || !content) return res.status(400).json({ error: '班次、记录人、内容必填' });
-  const r = db.prepare(`INSERT INTO handovers (date, shift, author, content, created_at) VALUES (?, ?, ?, ?, ?)`)
-    .run(date || todayStr(), shift, author, content, nowIso());
+  const r = db.prepare(`INSERT INTO handovers (date, shift, author, content, created_at, room, mother_name, baby_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(date || todayStr(), shift, author, content, nowIso(), room ?? null, mother_name ?? null, baby_name ?? null);
   res.status(201).json(db.prepare(`SELECT * FROM handovers WHERE id = ?`).get(r.lastInsertRowid));
 });
 

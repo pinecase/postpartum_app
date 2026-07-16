@@ -38,7 +38,8 @@ export default function PhotoInput({
   onChange: (photos: PhotoDraft[]) => void;
 }) {
   const { t } = useI18n();
-  const inputRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const albumRef = useRef<HTMLInputElement>(null);
 
   const onFiles = async (files: FileList | null) => {
     if (!files) return;
@@ -46,17 +47,26 @@ export default function PhotoInput({
     const picked = [...files].slice(0, room);
     const drafts = await Promise.all(picked.map(compressImage));
     onChange([...photos, ...drafts]);
-    if (inputRef.current) inputRef.current.value = '';
+    if (cameraRef.current) cameraRef.current.value = '';
+    if (albumRef.current) albumRef.current.value = '';
   };
 
   return (
     <div className="photo-input">
-      {/* capture="environment" 在手机浏览器直接唤起后置摄像头（首次会请求相机权限）；桌面端回退为文件选择 */}
+      {/* capture="environment" 唤起后置摄像头；无 capture 的输入打开相册/文件选择 */}
       <input
-        ref={inputRef}
+        ref={cameraRef}
         type="file"
         accept="image/*"
         capture="environment"
+        multiple
+        style={{ display: 'none' }}
+        onChange={(e) => onFiles(e.target.files)}
+      />
+      <input
+        ref={albumRef}
+        type="file"
+        accept="image/*"
         multiple
         style={{ display: 'none' }}
         onChange={(e) => onFiles(e.target.files)}
@@ -76,10 +86,16 @@ export default function PhotoInput({
           </div>
         ))}
         {photos.length < MAX_PHOTOS && (
-          <button type="button" className="photo-add" onClick={() => inputRef.current?.click()}>
-            📷
-            <span>{t('photo.take')}</span>
-          </button>
+          <>
+            <button type="button" className="photo-add" onClick={() => cameraRef.current?.click()}>
+              📷
+              <span>{t('photo.take')}</span>
+            </button>
+            <button type="button" className="photo-add" onClick={() => albumRef.current?.click()}>
+              🖼
+              <span>{t('photo.album')}</span>
+            </button>
+          </>
         )}
       </div>
       <div className="photo-hint">{t('photo.hint', { n: MAX_PHOTOS })}</div>

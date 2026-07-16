@@ -120,6 +120,9 @@ export interface Handover {
   author: string;
   content: string;
   created_at: string;
+  room: string | null;
+  mother_name: string | null;
+  baby_name: string | null;
 }
 
 export interface Alert {

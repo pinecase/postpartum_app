@@ -118,7 +118,10 @@ CREATE TABLE IF NOT EXISTS handovers (
   shift TEXT NOT NULL,
   author TEXT NOT NULL,
   content TEXT NOT NULL,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  room TEXT,
+  mother_name TEXT,
+  baby_name TEXT
 );
 
 CREATE TABLE IF NOT EXISTS photos (
