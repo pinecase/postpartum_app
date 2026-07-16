@@ -16,7 +16,7 @@
     {
       "binding": "DB",
       "database_name": "postpartum-care",
-      "database_id": "REPLACE_WITH_YOUR_DATABASE_ID"
+      "database_id": "1db774ed-2cf2-48e9-bbaf-2f1ff3cec431"
     }
   ],
   "observability": {
