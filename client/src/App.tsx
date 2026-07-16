@@ -9,6 +9,8 @@ import Handover from './pages/Handover';
 import Admission from './pages/Admission';
 import Admin from './pages/Admin';
 import { APP_VERSION } from './version';
+import PinGate from './components/PinGate';
+import UpdateBanner from './components/UpdateBanner';
 
 function BottomNav() {
   const { t } = useI18n();
@@ -109,6 +111,8 @@ export default function App() {
           </Routes>
         </main>
         <BottomNav />
+        <PinGate />
+        <UpdateBanner />
       </StaffProvider>
     </I18nProvider>
   );

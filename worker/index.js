@@ -14,6 +14,42 @@ const dayStartIso = () => {
 
 const err = (c, status, message) => c.json({ error: message }, status);
 
+// ---------- 访问 PIN ----------
+const getPin = async (db) =>
+  (await db.prepare(`SELECT value FROM settings WHERE key = 'access_pin'`).first())?.value || null;
+
+// 设置了 PIN 后，除 /api/auth/* 外的所有接口都要求 X-Pin 请求头
+app.use('/api/*', async (c, next) => {
+  if (c.req.path.startsWith('/api/auth/')) return next();
+  const pin = await getPin(c.env.DB).catch(() => null); // settings 表未建时放行
+  if (pin && c.req.header('x-pin') !== pin) {
+    return c.json({ error: 'pin_required' }, 401);
+  }
+  return next();
+});
+
+app.get('/api/auth/status', async (c) => {
+  const pin = await getPin(c.env.DB).catch(() => null);
+  return c.json({ pin_set: !!pin });
+});
+
+app.post('/api/auth/verify', async (c) => {
+  const { pin } = await c.req.json();
+  const stored = await getPin(c.env.DB).catch(() => null);
+  return c.json({ ok: !stored || pin === stored });
+});
+
+app.post('/api/auth/pin', async (c) => {
+  const { old_pin, new_pin } = await c.req.json();
+  if (!new_pin || !/^\d{4,8}$/.test(new_pin)) return err(c, 400, 'PIN 需为 4-8 位数字');
+  const stored = await getPin(c.env.DB).catch(() => null);
+  if (stored && old_pin !== stored) return err(c, 403, '当前访问码不正确');
+  await c.env.DB.prepare(
+    `INSERT INTO settings (key, value) VALUES ('access_pin', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+  ).bind(new_pin).run();
+  return c.json({ ok: true });
+});
+
 // ---------- 照片 ----------
 const MAX_PHOTOS_PER_RECORD = 3;
 const MAX_PHOTO_B64_LEN = 600_000; // ≈450KB 二进制，客户端压缩后远小于此

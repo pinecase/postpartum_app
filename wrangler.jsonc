@@ -4,6 +4,7 @@
   //   npx wrangler d1 create postpartum-care 输出的 database_id
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "postpartum-care",
+  "account_id": "84dec4c06f1afa6af0eb8bdc350d924a",
   "main": "worker/index.js",
   "compatibility_date": "2025-06-01",
   "assets": {

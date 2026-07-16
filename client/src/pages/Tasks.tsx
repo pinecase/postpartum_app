@@ -533,12 +533,50 @@ function TaskModal({
 
   const visibleFields = (TYPE_FIELDS[taskType] || []).filter((f) => !f.showIf || f.showIf(fieldValues));
 
+  // 数值合理范围校验（防止手误，如体重把 kg 填成 g）
+  const RANGES: Record<string, [number, number]> = {
+    temp: [34, 43], jaundice: [0, 35], hr: [40, 260], rr: [10, 120], spo2: [50, 100],
+    amount: [1, 500], bm: [1, 500], fm: [1, 500], duration: [1, 240], weight: [100, 8000],
+  };
+
+  // 返回校验后（可能已做 kg→g 换算）的字段值；error 非空时中止提交
+  const validateFields = (): { error: string | null; values: Record<string, string> } => {
+    const fv = { ...fieldValues };
+    const w = Number(fv.weight);
+    if (fv.weight && w > 0 && w < 100) {
+      // 疑似填了 kg，确认后自动换算
+      if (window.confirm(t('val.weightKg', { v: fv.weight, g: Math.round(w * 1000) }))) {
+        fv.weight = String(Math.round(w * 1000));
+        setFieldValues(fv);
+      } else {
+        return { error: t('val.range', { label: t('vitals.weightG') }), values: fv };
+      }
+    }
+    for (const f of visibleFields) {
+      if (f.kind !== 'number') continue;
+      const raw = (fv[f.id] || '').trim();
+      if (!raw) continue;
+      const [lo, hi] = RANGES[f.id] || [0, Infinity];
+      const val = Number(raw);
+      if (Number.isNaN(val) || val < lo || val > hi) {
+        return { error: `${t('val.range', { label: t(f.labelKey) })}（${lo}-${hi}）`, values: fv };
+      }
+    }
+    return { error: null, values: fv };
+  };
+
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    const checked = validateFields();
+    if (checked.error) {
+      setErr(checked.error);
+      return;
+    }
+    const values = checked.values;
     const fd = new FormData(e.currentTarget);
     const parts: string[] = [];
     for (const f of visibleFields) {
-      const v = (fieldValues[f.id] || '').trim();
+      const v = (values[f.id] || '').trim();
       if (!v || v === '无') continue;
       if (f.kind === 'number') parts.push(`${tv(f.short)} ${v}${f.unit || ''}`);
       else if (f.kind === 'time') parts.push(`${tv(f.short)} ${v}`);
@@ -552,7 +590,7 @@ function TaskModal({
     const photoPayload = photos.length ? photos.map((p) => ({ data: p.data, mime: p.mime })) : undefined;
 
     const syncs = buildRecordSyncs({
-      subjectType, subjectId, taskType, title, fieldValues, timeIso,
+      subjectType, subjectId, taskType, title, fieldValues: values, timeIso,
       notes: detail.trim(), recordedBy: createdBy, photos: photoPayload,
     });
 

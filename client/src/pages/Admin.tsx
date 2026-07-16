@@ -133,6 +133,63 @@ const EXPORT_COLUMNS: Record<ExportType, { key: string; label: string; tv?: bool
   ],
 };
 
+// 访问码设置：全店一个 4-8 位数字，设置后所有人打开需输入一次
+function PinSection() {
+  const { t } = useI18n();
+  const [pinSet, setPinSet] = useState(false);
+  const [oldPin, setOldPin] = useState('');
+  const [newPin, setNewPin] = useState('');
+  const [msg, setMsg] = useState('');
+
+  useEffect(() => {
+    fetch('/api/auth/status').then((r) => r.json()).then((j) => setPinSet(j.pin_set));
+  }, []);
+
+  const save = async () => {
+    setMsg('');
+    const res = await fetch('/api/auth/pin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ old_pin: oldPin, new_pin: newPin }),
+    });
+    const j = await res.json();
+    if (res.ok) {
+      localStorage.setItem('app_pin', newPin);
+      setPinSet(true);
+      setOldPin('');
+      setNewPin('');
+      setMsg(t('pin.saved'));
+    } else {
+      setMsg(j.error || 'error');
+    }
+  };
+
+  return (
+    <div className="card">
+      <h3>🔐 {t('pin.section')}</h3>
+      {!pinSet && <p className="meta" style={{ color: 'var(--danger)', marginBottom: 8 }}>{t('pin.unsetWarning')}</p>}
+      <div className="form-grid">
+        {pinSet && (
+          <div className="field">
+            <label>{t('pin.old')}</label>
+            <input type="password" inputMode="numeric" value={oldPin} onChange={(e) => setOldPin(e.target.value)} />
+          </div>
+        )}
+        <div className="field">
+          <label>{t('pin.new')}</label>
+          <input type="password" inputMode="numeric" value={newPin} onChange={(e) => setNewPin(e.target.value)} placeholder="4-8 位数字" />
+        </div>
+        <div className="field" style={{ justifyContent: 'flex-end' }}>
+          <button className="btn btn-primary" onClick={save} disabled={!/^\d{4,8}$/.test(newPin)}>
+            {t('common.save')}
+          </button>
+        </div>
+      </div>
+      {msg && <div className="meta" style={{ marginTop: 8 }}>{msg}</div>}
+    </div>
+  );
+}
+
 const lastNDays = (n: number) => {
   const days: string[] = [];
   for (let i = n - 1; i >= 0; i--) {
@@ -388,6 +445,8 @@ export default function Admin() {
           </table>
         </div>
       </div>
+
+      <PinSection />
 
       <div className="card">
         <h3>{t('admin.exportDetail')}</h3>

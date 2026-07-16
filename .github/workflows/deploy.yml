@@ -1,0 +1,27 @@
+# 推送到主开发分支后自动构建并部署到 Cloudflare Workers。
+# 需要在 GitHub 仓库 Settings → Secrets and variables → Actions 配置：
+#   CLOUDFLARE_API_TOKEN  （Cloudflare 控制台生成，模板选 "Edit Cloudflare Workers"）
+name: Deploy to Cloudflare
+
+on:
+  push:
+    branches:
+      - claude/postpartum-tracking-app-vzhnnj
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          command: deploy

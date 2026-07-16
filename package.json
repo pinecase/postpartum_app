@@ -15,7 +15,7 @@
     "cf:db:schema": "wrangler d1 execute postpartum-care --remote --file=./db/schema.sql",
     "cf:db:seed": "npm run seed:sql && wrangler d1 execute postpartum-care --remote --file=./db/seed.sql",
     "cf:db:clear": "wrangler d1 execute postpartum-care --remote --file=./db/clear.sql",
-    "cf:db:migrate": "wrangler d1 execute postpartum-care --remote --file=./db/migrate-v3.sql"
+    "cf:db:migrate": "wrangler d1 execute postpartum-care --remote --file=./db/migrate-v4.sql"
   },
   "workspaces": [
     "server",

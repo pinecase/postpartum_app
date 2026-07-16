@@ -136,6 +136,11 @@ CREATE TABLE IF NOT EXISTS photos (
 
 CREATE INDEX IF NOT EXISTS idx_photos_record ON photos(record_type, record_id);
 
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_feeds_baby_time ON baby_feeds(baby_id, time);
 CREATE INDEX IF NOT EXISTS idx_diapers_baby_time ON baby_diapers(baby_id, time);
 CREATE INDEX IF NOT EXISTS idx_bvitals_baby_time ON baby_vitals(baby_id, time);

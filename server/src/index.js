@@ -43,6 +43,38 @@ app.get('/api/photos/:id', (req, res) => {
   res.json(p);
 });
 
+// ---------- 访问 PIN ----------
+const getPin = () => {
+  try {
+    return db.prepare(`SELECT value FROM settings WHERE key = 'access_pin'`).get()?.value || null;
+  } catch {
+    return null;
+  }
+};
+
+app.use('/api', (req, res, next) => {
+  if (req.path.startsWith('/auth/')) return next();
+  const pin = getPin();
+  if (pin && req.headers['x-pin'] !== pin) return res.status(401).json({ error: 'pin_required' });
+  next();
+});
+
+app.get('/api/auth/status', (req, res) => res.json({ pin_set: !!getPin() }));
+
+app.post('/api/auth/verify', (req, res) => {
+  const stored = getPin();
+  res.json({ ok: !stored || req.body.pin === stored });
+});
+
+app.post('/api/auth/pin', (req, res) => {
+  const { old_pin, new_pin } = req.body;
+  if (!new_pin || !/^\d{4,8}$/.test(new_pin)) return res.status(400).json({ error: 'PIN 需为 4-8 位数字' });
+  const stored = getPin();
+  if (stored && old_pin !== stored) return res.status(403).json({ error: '当前访问码不正确' });
+  db.prepare(`INSERT INTO settings (key, value) VALUES ('access_pin', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`).run(new_pin);
+  res.json({ ok: true });
+});
+
 // ---------- 员工 ----------
 app.get('/api/staff', (req, res) => {
   res.json(db.prepare(`SELECT * FROM staff WHERE active = 1 ORDER BY id`).all());

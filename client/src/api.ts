@@ -177,6 +177,11 @@ export interface BabyDetailData extends Baby {
 }
 
 async function handle<T>(res: Response): Promise<T> {
+  if (res.status === 401) {
+    // 通知 App 弹出 PIN 锁屏
+    window.dispatchEvent(new CustomEvent('pin-required'));
+    throw new Error('pin_required');
+  }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error((body as { error?: string }).error || `请求失败 (${res.status})`);
@@ -184,21 +189,26 @@ async function handle<T>(res: Response): Promise<T> {
   return res.json();
 }
 
+const pinHeader = (): Record<string, string> => {
+  const pin = localStorage.getItem('app_pin');
+  return pin ? { 'X-Pin': pin } : {};
+};
+
 export const api = {
-  get: <T>(url: string) => fetch(url).then((r) => handle<T>(r)),
+  get: <T>(url: string) => fetch(url, { headers: pinHeader() }).then((r) => handle<T>(r)),
   post: <T>(url: string, body: unknown) =>
     fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...pinHeader() },
       body: JSON.stringify(body),
     }).then((r) => handle<T>(r)),
   patch: <T>(url: string, body: unknown) =>
     fetch(url, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...pinHeader() },
       body: JSON.stringify(body),
     }).then((r) => handle<T>(r)),
-  del: <T>(url: string) => fetch(url, { method: 'DELETE' }).then((r) => handle<T>(r)),
+  del: <T>(url: string) => fetch(url, { method: 'DELETE', headers: pinHeader() }).then((r) => handle<T>(r)),
 };
 
 export function fmtTime(t: string | null | undefined): string {
