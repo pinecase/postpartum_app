@@ -246,6 +246,9 @@ const zh = {
   'update.refresh': '点击刷新',
   'val.range': '{label} 超出合理范围',
   'val.weightKg': '体重填了 {v}，看起来是 kg——按 {g} g 保存吗？',
+  'handover.autoSum': '📝 自动汇总本班',
+  'handover.copy': '📋 复制',
+  'handover.copied': '✅ 已复制',
 
   'admission.title': '🏠 入住管理',
   'admission.new': '办理入住',
@@ -543,6 +546,9 @@ const en: Partial<typeof zh> = {
   'update.refresh': 'Tap to refresh',
   'val.range': '{label} out of valid range',
   'val.weightKg': 'Weight {v} looks like kg — save as {g} g?',
+  'handover.autoSum': '📝 Auto-summarise shift',
+  'handover.copy': '📋 Copy',
+  'handover.copied': '✅ Copied',
 
   'admission.title': '🏠 Admissions',
   'admission.new': 'New admission',
@@ -840,6 +846,9 @@ const ms: Partial<typeof zh> = {
   'update.refresh': 'Ketik untuk muat semula',
   'val.range': '{label} di luar julat munasabah',
   'val.weightKg': 'Berat {v} nampak seperti kg — simpan sebagai {g} g?',
+  'handover.autoSum': '📝 Ringkas syif automatik',
+  'handover.copy': '📋 Salin',
+  'handover.copied': '✅ Disalin',
 
   'admission.title': '🏠 Pengurusan Kemasukan',
   'admission.new': 'Kemasukan baharu',

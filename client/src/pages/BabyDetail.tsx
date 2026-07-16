@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ReferenceLine,
   ResponsiveContainer, CartesianGrid,
@@ -18,6 +18,7 @@ const TAB_KEYS: Tab[] = ['feeds', 'diapers', 'vitals', 'cares'];
 
 export default function BabyDetail() {
   const { id } = useParams();
+  const nav = useNavigate();
   const { current } = useStaff();
   const { t, tv } = useI18n();
   const [data, setData] = useState<BabyDetailData | null>(null);
@@ -99,6 +100,18 @@ export default function BabyDetail() {
           <div><div className="k">{t('baby.latestJaundice')}</div>{latestJaundice ? `${latestJaundice.jaundice_mg_dl} mg/dL（${fmtTime(latestJaundice.time)}）` : '—'}</div>
           <div><div className="k">{t('baby.gestAge')}</div>{data.gestational_age_weeks ? t('baby.gestWeeks', { n: data.gestational_age_weeks }) : '—'}</div>
           {data.notes && <div><div className="k">{t('common.notes')}</div>{data.notes}</div>}
+        </div>
+        {/* 快捷录入：直达预选好该宝宝的任务表单 */}
+        <div className="btn-row" style={{ marginTop: 12 }}>
+          {['喂奶时间', '换尿布', '洗澡记录', '体征测量'].map((type) => (
+            <button
+              key={type}
+              className="btn btn-sm"
+              onClick={() => nav(`/tasks?new=${encodeURIComponent(type)}&baby=${data.id}`)}
+            >
+              ＋ {tv(type)}
+            </button>
+          ))}
         </div>
       </div>
 

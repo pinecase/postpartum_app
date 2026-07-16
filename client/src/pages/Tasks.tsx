@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api, fmtTime, CareTask, Mother, Baby, BabyDetailData } from '../api';
 import { useStaff } from '../StaffContext';
 import { useI18n } from '../i18n';
@@ -232,6 +232,17 @@ export default function Tasks() {
   const [filter, setFilter] = useState<Filter>('待办');
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<CareTask | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [preset, setPreset] = useState<{ type?: string; babyId?: number } | null>(null);
+
+  // 从宝宝页快捷按钮跳转过来：自动打开预选好的新建弹窗
+  useEffect(() => {
+    const type = searchParams.get('new');
+    if (!type) return;
+    setPreset({ type, babyId: Number(searchParams.get('baby')) || undefined });
+    setShowForm(true);
+    setSearchParams({}, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const load = useCallback(() => {
     const q = filter === '全部' ? '' : `?status=${encodeURIComponent(filter)}`;
@@ -311,9 +322,15 @@ export default function Tasks() {
       {showForm && (
         <TaskModal
           createdBy={current}
-          onClose={() => setShowForm(false)}
+          initialType={preset?.type}
+          initialSubjectId={preset?.babyId}
+          onClose={() => {
+            setShowForm(false);
+            setPreset(null);
+          }}
           onSaved={() => {
             setShowForm(false);
+            setPreset(null);
             load();
           }}
         />
@@ -401,18 +418,22 @@ function EditTaskModal({
 const pad = (x: number) => String(x).padStart(2, '0');
 
 function TaskModal({
-  createdBy, onClose, onSaved,
+  createdBy, onClose, onSaved, initialType, initialSubjectId,
 }: {
   createdBy: string;
   onClose: () => void;
   onSaved: () => void;
+  initialType?: string;
+  initialSubjectId?: number;
 }) {
   const { t, tv } = useI18n();
   const [mothers, setMothers] = useState<Mother[]>([]);
   const [babies, setBabies] = useState<Baby[]>([]);
   const [subjectType, setSubjectType] = useState<'mother' | 'baby'>('baby');
-  const [subjectId, setSubjectId] = useState<number>(0);
-  const [taskType, setTaskTypeState] = useState(TASK_TYPES[0]);
+  const [subjectId, setSubjectId] = useState<number>(initialSubjectId || 0);
+  const [taskType, setTaskTypeState] = useState(
+    initialType && TASK_TYPES.includes(initialType) ? initialType : TASK_TYPES[0]
+  );
   const [detail, setDetail] = useState('');
   const [internalNote, setInternalNote] = useState('');
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
@@ -443,9 +464,11 @@ function TaskModal({
         all.push(...d.babies.filter((b) => b.status === '在住'));
       }
       setBabies(all);
-      if (all.length) setSubjectId(all[0].id);
+      if (initialSubjectId && all.some((b) => b.id === initialSubjectId)) setSubjectId(initialSubjectId);
+      else if (all.length) setSubjectId(all[0].id);
       else if (ms.length) setSubjectId(ms[0].id);
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
