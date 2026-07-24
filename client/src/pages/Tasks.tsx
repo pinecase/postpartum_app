@@ -106,7 +106,7 @@ const DETAIL_PRESETS: Record<string, string[]> = {
 };
 
 // 根据任务类型与已填内容生成需同步写入的护理记录（可多条）。
-interface SyncInput {
+export interface SyncInput {
   subjectType: 'mother' | 'baby';
   subjectId: number;
   taskType: string;
@@ -118,7 +118,7 @@ interface SyncInput {
   photos?: { data: string; mime: string }[];
 }
 
-function buildRecordSyncs(s: SyncInput): { url: string; payload: Record<string, unknown> }[] {
+export function buildRecordSyncs(s: SyncInput): { url: string; payload: Record<string, unknown> }[] {
   const v = (k: string) => (s.fieldValues[k] || '').trim();
   const n = (k: string) => (v(k) ? Number(v(k)) : null);
   const visible = (TYPE_FIELDS[s.taskType] || []).filter((f) => !f.showIf || f.showIf(s.fieldValues));

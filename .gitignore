@@ -6,3 +6,6 @@ server/data/
 *.tsbuildinfo
 .wrangler/
 db/seed.sql
+.stryker-tmp/
+coverage/
+reports/
