@@ -2,6 +2,15 @@ export interface Staff {
   id: number;
   name: string;
   role: string;
+  email?: string | null;
+  is_admin?: number;
+  active?: number;
+  has_password?: number;
+}
+
+export interface AuthStatus {
+  pin_set: boolean;
+  accounts_exist: boolean;
 }
 
 export interface Mother {
@@ -190,11 +199,32 @@ export interface BabyDetailData extends Baby {
   photos: PhotoRef[];
 }
 
+// ---------- 登录态（邮箱账号 + PIN 兜底） ----------
+export const getAuthToken = () => localStorage.getItem('auth_token');
+
+export const getAuthStaff = (): Staff | null => {
+  try {
+    return JSON.parse(localStorage.getItem('auth_staff') || 'null');
+  } catch {
+    return null;
+  }
+};
+
+export const setAuth = (token: string, staff: Staff) => {
+  localStorage.setItem('auth_token', token);
+  localStorage.setItem('auth_staff', JSON.stringify(staff));
+};
+
+export const clearAuth = () => {
+  localStorage.removeItem('auth_token');
+  localStorage.removeItem('auth_staff');
+};
+
 async function handle<T>(res: Response): Promise<T> {
   if (res.status === 401) {
-    // 通知 App 弹出 PIN 锁屏
-    window.dispatchEvent(new CustomEvent('pin-required'));
-    throw new Error('pin_required');
+    // 通知 App 弹出登录/PIN 锁屏
+    window.dispatchEvent(new CustomEvent('auth-required'));
+    throw new Error('auth_required');
   }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -203,26 +233,30 @@ async function handle<T>(res: Response): Promise<T> {
   return res.json();
 }
 
-const pinHeader = (): Record<string, string> => {
+const authHeaders = (): Record<string, string> => {
+  const h: Record<string, string> = {};
+  const token = getAuthToken();
+  if (token) h['X-Auth-Token'] = token;
   const pin = localStorage.getItem('app_pin');
-  return pin ? { 'X-Pin': pin } : {};
+  if (pin) h['X-Pin'] = pin;
+  return h;
 };
 
 export const api = {
-  get: <T>(url: string) => fetch(url, { headers: pinHeader() }).then((r) => handle<T>(r)),
+  get: <T>(url: string) => fetch(url, { headers: authHeaders() }).then((r) => handle<T>(r)),
   post: <T>(url: string, body: unknown) =>
     fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...pinHeader() },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(body),
     }).then((r) => handle<T>(r)),
   patch: <T>(url: string, body: unknown) =>
     fetch(url, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', ...pinHeader() },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(body),
     }).then((r) => handle<T>(r)),
-  del: <T>(url: string) => fetch(url, { method: 'DELETE', headers: pinHeader() }).then((r) => handle<T>(r)),
+  del: <T>(url: string) => fetch(url, { method: 'DELETE', headers: authHeaders() }).then((r) => handle<T>(r)),
 };
 
 export function fmtTime(t: string | null | undefined): string {

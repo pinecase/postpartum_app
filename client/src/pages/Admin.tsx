@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from 'recharts';
-import { api, fmtTime, dayOfLife, Alert } from '../api';
+import { api, fmtTime, dayOfLife, Alert, Staff, getAuthStaff } from '../api';
 import { useI18n } from '../i18n';
 import { downloadCsv } from '../csv';
 
@@ -142,25 +142,20 @@ function PinSection() {
   const [msg, setMsg] = useState('');
 
   useEffect(() => {
-    fetch('/api/auth/status').then((r) => r.json()).then((j) => setPinSet(j.pin_set));
+    api.get<{ pin_set: boolean }>('/api/auth/status').then((j) => setPinSet(j.pin_set)).catch(() => {});
   }, []);
 
   const save = async () => {
     setMsg('');
-    const res = await fetch('/api/auth/pin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ old_pin: oldPin, new_pin: newPin }),
-    });
-    const j = await res.json();
-    if (res.ok) {
+    try {
+      await api.post('/api/auth/pin', { old_pin: oldPin, new_pin: newPin });
       localStorage.setItem('app_pin', newPin);
       setPinSet(true);
       setOldPin('');
       setNewPin('');
       setMsg(t('pin.saved'));
-    } else {
-      setMsg(j.error || 'error');
+    } catch (e) {
+      setMsg((e as Error).message);
     }
   };
 
@@ -185,6 +180,145 @@ function PinSection() {
           </button>
         </div>
       </div>
+      {msg && <div className="meta" style={{ marginTop: 8 }}>{msg}</div>}
+    </div>
+  );
+}
+
+// 会员管理：管理员登录后可添加成员账号、重置密码、设/撤管理员、停用/启用
+function MemberSection() {
+  const { t, tv } = useI18n();
+  const me = getAuthStaff();
+  const [list, setList] = useState<Staff[] | null>(null);
+  const [denied, setDenied] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [nName, setNName] = useState('');
+  const [nEmail, setNEmail] = useState('');
+  const [nPw, setNPw] = useState('');
+  const [nRole, setNRole] = useState('护士');
+  const [nAdmin, setNAdmin] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const load = () =>
+    api.get<Staff[]>('/api/staff/full')
+      .then((l) => { setList(l); setDenied(false); })
+      .catch((e) => { if ((e as Error).message !== 'auth_required') setDenied(true); });
+
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const addMember = async () => {
+    setMsg('');
+    setBusy(true);
+    try {
+      await api.post('/api/staff/accounts', { name: nName, email: nEmail, password: nPw, role: nRole, is_admin: nAdmin ? 1 : 0 });
+      setNName(''); setNEmail(''); setNPw(''); setNAdmin(false);
+      setMsg(t('auth.memberAdded'));
+      await load();
+    } catch (e) {
+      setMsg((e as Error).message);
+    }
+    setBusy(false);
+  };
+
+  const patchMember = async (id: number, body: Record<string, unknown>) => {
+    setMsg('');
+    try {
+      await api.patch(`/api/staff/${id}`, body);
+      await load();
+    } catch (e) {
+      setMsg((e as Error).message);
+    }
+  };
+
+  const resetPw = (s: Staff) => {
+    const pw = window.prompt(`${s.name} — ${t('auth.newPwPrompt')}`)?.trim();
+    if (!pw) return;
+    if (pw.length < 6) { setMsg(t('auth.pwTooShort')); return; }
+    patchMember(s.id, { password: pw });
+  };
+
+  return (
+    <div className="card">
+      <h3>👥 {t('auth.members')}</h3>
+      {denied && <p className="meta" style={{ color: 'var(--warning)' }}>{t('auth.needAdmin')}</p>}
+      {!denied && list && (
+        <>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>{t('auth.name')}</th>
+                  <th>{t('auth.role')}</th>
+                  <th>{t('auth.email')}</th>
+                  <th>{t('auth.adminFlag')}</th>
+                  <th>{t('auth.state')}</th>
+                  <th>{t('auth.actions')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.map((s) => (
+                  <tr key={s.id} style={s.active ? undefined : { opacity: 0.5 }}>
+                    <td>{s.name}{me?.id === s.id ? ' ⭐' : ''}</td>
+                    <td>{tv(s.role)}</td>
+                    <td>{s.email || <span className="meta">{t('auth.noAccount')}</span>}</td>
+                    <td>{s.is_admin ? '✅' : '—'}</td>
+                    <td>{s.active ? t('auth.enabled') : t('auth.disabled')}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      {!!s.has_password && (
+                        <button className="btn-link" onClick={() => resetPw(s)}>{t('auth.resetPw')}</button>
+                      )}
+                      {!!s.has_password && me?.id !== s.id && (
+                        <button className="btn-link" onClick={() => patchMember(s.id, { is_admin: s.is_admin ? 0 : 1 })}>
+                          {s.is_admin ? t('auth.revokeAdmin') : t('auth.makeAdmin')}
+                        </button>
+                      )}
+                      {me?.id !== s.id && (
+                        <button className="btn-link" onClick={() => patchMember(s.id, { active: s.active ? 0 : 1 })}>
+                          {s.active ? t('auth.disable') : t('auth.enable')}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <h4 style={{ margin: '16px 0 8px' }}>{t('auth.addMember')}</h4>
+          <div className="form-grid">
+            <div className="field">
+              <label>{t('auth.name')}</label>
+              <input value={nName} onChange={(e) => setNName(e.target.value)} />
+            </div>
+            <div className="field">
+              <label>{t('auth.email')}</label>
+              <input type="email" value={nEmail} onChange={(e) => setNEmail(e.target.value)} />
+            </div>
+            <div className="field">
+              <label>{t('auth.passwordMin')}</label>
+              <input type="password" value={nPw} onChange={(e) => setNPw(e.target.value)} />
+            </div>
+            <div className="field">
+              <label>{t('auth.role')}</label>
+              <select value={nRole} onChange={(e) => setNRole(e.target.value)}>
+                {['护士', '护士长', '月嫂', '医生', '管理员'].map((r) => (
+                  <option key={r} value={r}>{tv(r)}</option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label>
+                <input type="checkbox" checked={nAdmin} onChange={(e) => setNAdmin(e.target.checked)} /> {t('auth.adminFlag')}
+              </label>
+            </div>
+            <div className="field" style={{ justifyContent: 'flex-end' }}>
+              <button className="btn btn-primary" onClick={addMember} disabled={busy || !nName || !nEmail || nPw.length < 6}>
+                {t('auth.addMember')}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
       {msg && <div className="meta" style={{ marginTop: 8 }}>{msg}</div>}
     </div>
   );
@@ -445,6 +579,8 @@ export default function Admin() {
           </table>
         </div>
       </div>
+
+      <MemberSection />
 
       <PinSection />
 

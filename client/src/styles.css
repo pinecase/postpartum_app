@@ -642,6 +642,29 @@ td.wrap {
   justify-content: center;
 }
 
+/* 登录表单输入（邮箱/密码等常规字段，区别于 PIN 大号数字框） */
+.pin-box input.auth-input {
+  font-size: 15px;
+  letter-spacing: normal;
+  text-align: left;
+}
+
+.pin-box .meta {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--brand-deep);
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 4px;
+}
+
 .update-banner {
   position: fixed;
   top: 0;

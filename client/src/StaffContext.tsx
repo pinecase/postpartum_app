@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { api, Staff } from './api';
+import { api, Staff, getAuthStaff } from './api';
 
 interface StaffCtx {
   staff: Staff[];
@@ -17,8 +17,9 @@ const Ctx = createContext<StaffCtx>({
 
 export function StaffProvider({ children }: { children: ReactNode }) {
   const [staff, setStaff] = useState<Staff[]>([]);
+  // 记录人默认取当前登录账号，其次取上次选择
   const [current, setCurrentState] = useState<string>(
-    () => localStorage.getItem('current_staff') || ''
+    () => getAuthStaff()?.name || localStorage.getItem('current_staff') || ''
   );
 
   const setCurrent = (name: string) => {

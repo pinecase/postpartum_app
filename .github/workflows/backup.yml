@@ -1,0 +1,58 @@
+# 每日自动备份 D1 数据库，双份存放，防误删：
+#   ① GitHub Actions 附件（Artifacts，保留 90 天）
+#   ② 仓库 backups 分支（长期保留，保留最近 60 份）
+# 另外 Cloudflare D1 自带 Time Travel，可回滚最近 30 天任意时间点，算第三重保险。
+# 需要与部署相同的 GitHub Secret：CLOUDFLARE_API_TOKEN
+name: Daily D1 backup
+
+on:
+  schedule:
+    - cron: '0 19 * * *' # UTC 19:00 = 马来西亚时间凌晨 3:00
+  workflow_dispatch: {} # 也可在 Actions 页面手动触发
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # 允许推送 backups 分支
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: 导出 D1 数据库
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          STAMP=$(date -u +%Y-%m-%d)
+          npx wrangler d1 export postpartum-care --remote --output="d1-backup-$STAMP.sql"
+          ls -lh d1-backup-*.sql
+          echo "STAMP=$STAMP" >> "$GITHUB_ENV"
+
+      - name: 备份①：上传为 Actions 附件（保留 90 天）
+        uses: actions/upload-artifact@v4
+        with:
+          name: d1-backup-${{ env.STAMP }}
+          path: d1-backup-${{ env.STAMP }}.sql
+          retention-days: 90
+
+      - name: 备份②：提交到 backups 分支（保留最近 60 份）
+        run: |
+          git config user.name "backup-bot"
+          git config user.email "actions@github.com"
+          # 切到 backups 分支（远端已有则接着用，否则新建空分支）
+          if git fetch origin backups 2>/dev/null; then
+            git switch backups
+          else
+            git switch --orphan backups
+          fi
+          mkdir -p backups
+          mv "d1-backup-$STAMP.sql" "backups/d1-backup-$STAMP.sql"
+          # 只保留最近 60 份，避免分支无限膨胀
+          ls -1 backups/d1-backup-*.sql 2>/dev/null | sort | head -n -60 | xargs -r rm --
+          git add -A backups
+          git commit -m "每日备份 $STAMP" || echo "今日无变化，跳过提交"
+          git push origin backups

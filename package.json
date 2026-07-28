@@ -15,7 +15,7 @@
     "cf:db:schema": "wrangler d1 execute postpartum-care --remote --file=./db/schema.sql",
     "cf:db:seed": "npm run seed:sql && wrangler d1 execute postpartum-care --remote --file=./db/seed.sql",
     "cf:db:clear": "wrangler d1 execute postpartum-care --remote --file=./db/clear.sql",
-    "cf:db:migrate": "wrangler d1 execute postpartum-care --remote --file=./db/migrate-v5.sql",
+    "cf:db:migrate": "wrangler d1 execute postpartum-care --remote --file=./db/migrate-v6.sql",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:bdd": "cucumber-js",

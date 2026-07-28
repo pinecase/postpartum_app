@@ -37,13 +37,10 @@ function photoRefs(recordType, subQuerySql, subQueryParam) {
     .all(recordType, subQueryParam);
 }
 
-app.get('/api/photos/:id', (req, res) => {
-  const p = db.prepare(`SELECT * FROM photos WHERE id = ?`).get(req.params.id);
-  if (!p) return res.status(404).json({ error: '未找到照片' });
-  res.json(p);
-});
+// ---------- 访问控制：邮箱账号（会话）＋ PIN 兜底 ----------
+// Express 4 不自动捕获 async 错误
+const aw = (fn) => (req, res, next) => fn(req, res, next).catch(next);
 
-// ---------- 访问 PIN ----------
 const getPin = () => {
   try {
     return db.prepare(`SELECT value FROM settings WHERE key = 'access_pin'`).get()?.value || null;
@@ -52,14 +49,110 @@ const getPin = () => {
   }
 };
 
+// PBKDF2-SHA256 口令哈希（WebCrypto，与 Cloudflare Workers 完全同源实现）
+const PBKDF2_ITER = 100_000;
+const toHex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+const fromHex = (s) => new Uint8Array((s.match(/../g) || []).map((h) => parseInt(h, 16)));
+
+async function hashPassword(password, saltHex) {
+  const salt = saltHex ? fromHex(saltHex) : crypto.getRandomValues(new Uint8Array(16));
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: PBKDF2_ITER }, key, 256);
+  return `${toHex(salt)}:${toHex(bits)}`;
+}
+
+const verifyPassword = async (password, stored) => {
+  const saltHex = typeof stored === 'string' ? stored.split(':')[0] : '';
+  return !!saltHex && (await hashPassword(password, saltHex)) === stored;
+};
+
+const newToken = () => toHex(crypto.getRandomValues(new Uint8Array(32)));
+const SESSION_TTL_MS = 30 * 86400000; // 登录有效 30 天
+
+const staffByToken = (token) => {
+  if (!token) return null;
+  try {
+    const row = db
+      .prepare(`SELECT s.*, se.created_at AS session_created FROM sessions se JOIN staff s ON s.id = se.staff_id WHERE se.token = ?`)
+      .get(token);
+    if (!row) return null;
+    if (!row.active || Date.now() - new Date(row.session_created).getTime() > SESSION_TTL_MS) {
+      db.prepare(`DELETE FROM sessions WHERE token = ?`).run(token);
+      return null;
+    }
+    return row;
+  } catch {
+    return null;
+  }
+};
+
+const accountsExist = () => {
+  try {
+    return !!db.prepare(`SELECT 1 FROM staff WHERE password_hash IS NOT NULL AND active = 1 LIMIT 1`).get();
+  } catch {
+    return false;
+  }
+};
+
+// 已建账号 → 需登录（X-Auth-Token）；PIN 仍可作全店共用兜底；两者都没设置时开放
 app.use('/api', (req, res, next) => {
   if (req.path.startsWith('/auth/')) return next();
+  const staff = staffByToken(req.headers['x-auth-token']);
+  if (staff) {
+    req.staff = staff;
+    return next();
+  }
   const pin = getPin();
-  if (pin && req.headers['x-pin'] !== pin) return res.status(401).json({ error: 'pin_required' });
+  if (pin && req.headers['x-pin'] === pin) return next();
+  if (accountsExist()) return res.status(401).json({ error: 'auth_required' });
+  if (pin) return res.status(401).json({ error: 'pin_required' });
   next();
 });
 
-app.get('/api/auth/status', (req, res) => res.json({ pin_set: !!getPin() }));
+const publicStaff = (s) => ({ id: s.id, name: s.name, role: s.role, email: s.email, is_admin: s.is_admin, active: s.active });
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+app.get('/api/auth/status', (req, res) =>
+  res.json({ pin_set: !!getPin(), accounts_exist: accountsExist() })
+);
+
+app.get('/api/auth/me', (req, res) => {
+  const s = staffByToken(req.headers['x-auth-token']);
+  if (!s) return res.status(401).json({ error: 'auth_required' });
+  res.json(publicStaff(s));
+});
+
+// 首次初始化：库里还没有任何账号时，创建第一个管理员
+app.post('/api/auth/register-first', aw(async (req, res) => {
+  if (accountsExist()) return res.status(403).json({ error: '已有账号，请直接登录' });
+  const { name, email, password } = req.body;
+  if (!name || !EMAIL_RE.test(email || '') || !password || password.length < 6) {
+    return res.status(400).json({ error: '请填写姓名、有效邮箱和至少 6 位密码' });
+  }
+  const hash = await hashPassword(password);
+  const r = db.prepare(`INSERT INTO staff (name, role, email, password_hash, is_admin) VALUES (?, '管理员', ?, ?, 1)`)
+    .run(name, email.trim().toLowerCase(), hash);
+  const token = newToken();
+  db.prepare(`INSERT INTO sessions (token, staff_id, created_at) VALUES (?, ?, ?)`).run(token, r.lastInsertRowid, nowIso());
+  res.status(201).json({ token, staff: publicStaff(db.prepare(`SELECT * FROM staff WHERE id = ?`).get(r.lastInsertRowid)) });
+}));
+
+app.post('/api/auth/login', aw(async (req, res) => {
+  const { email, password } = req.body;
+  const s = db.prepare(`SELECT * FROM staff WHERE lower(email) = ? AND active = 1`).get((email || '').trim().toLowerCase());
+  if (!s || !(await verifyPassword(password || '', s.password_hash))) {
+    return res.status(401).json({ error: '邮箱或密码不正确' });
+  }
+  const token = newToken();
+  db.prepare(`INSERT INTO sessions (token, staff_id, created_at) VALUES (?, ?, ?)`).run(token, s.id, nowIso());
+  res.json({ token, staff: publicStaff(s) });
+}));
+
+app.post('/api/auth/logout', (req, res) => {
+  const token = req.headers['x-auth-token'];
+  if (token) db.prepare(`DELETE FROM sessions WHERE token = ?`).run(token);
+  res.json({ ok: true });
+});
 
 app.post('/api/auth/verify', (req, res) => {
   const stored = getPin();
@@ -69,15 +162,26 @@ app.post('/api/auth/verify', (req, res) => {
 app.post('/api/auth/pin', (req, res) => {
   const { old_pin, new_pin } = req.body;
   if (!new_pin || !/^\d{4,8}$/.test(new_pin)) return res.status(400).json({ error: 'PIN 需为 4-8 位数字' });
+  // 已有账号后，只有登录的管理员能改 PIN（防止未登录者抢先设 PIN 绕过登录）
+  if (accountsExist() && !staffByToken(req.headers['x-auth-token'])?.is_admin) {
+    return res.status(403).json({ error: '需要管理员登录后设置' });
+  }
   const stored = getPin();
   if (stored && old_pin !== stored) return res.status(403).json({ error: '当前访问码不正确' });
   db.prepare(`INSERT INTO settings (key, value) VALUES ('access_pin', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`).run(new_pin);
   res.json({ ok: true });
 });
 
+app.get('/api/photos/:id', (req, res) => {
+  const p = db.prepare(`SELECT * FROM photos WHERE id = ?`).get(req.params.id);
+  if (!p) return res.status(404).json({ error: '未找到照片' });
+  res.json(p);
+});
+
 // ---------- 员工 ----------
 app.get('/api/staff', (req, res) => {
-  res.json(db.prepare(`SELECT * FROM staff WHERE active = 1 ORDER BY id`).all());
+  // 不暴露 password_hash 等账号字段（账号详情走 /api/staff/full，仅管理员）
+  res.json(db.prepare(`SELECT id, name, role, active FROM staff WHERE active = 1 ORDER BY id`).all());
 });
 
 app.post('/api/staff', (req, res) => {
@@ -86,6 +190,88 @@ app.post('/api/staff', (req, res) => {
   const r = db.prepare(`INSERT INTO staff (name, role) VALUES (?, ?)`).run(name, role);
   res.status(201).json(db.prepare(`SELECT * FROM staff WHERE id = ?`).get(r.lastInsertRowid));
 });
+
+// ---------- 会员管理（仅管理员） ----------
+const requireAdmin = (req, res) => {
+  if (!req.staff?.is_admin) {
+    res.status(403).json({ error: '需要管理员账号登录' });
+    return false;
+  }
+  return true;
+};
+
+const emailTaken = (email, exceptId = 0) =>
+  !!db.prepare(`SELECT id FROM staff WHERE lower(email) = ? AND id != ?`).get(email, exceptId);
+
+// 活跃的管理员账号数（防止把最后一个管理员停用/降权）
+const otherAdminCount = (exceptId) =>
+  db.prepare(`SELECT COUNT(*) AS c FROM staff WHERE is_admin = 1 AND active = 1 AND password_hash IS NOT NULL AND id != ?`).get(exceptId).c;
+
+app.get('/api/staff/full', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  res.json(
+    db.prepare(`SELECT id, name, role, active, email, is_admin, (password_hash IS NOT NULL) AS has_password FROM staff ORDER BY id`).all()
+  );
+});
+
+app.post('/api/staff/accounts', aw(async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const { name, email, password, role = '护士', is_admin = 0 } = req.body;
+  if (!name || !EMAIL_RE.test(email || '') || !password || password.length < 6) {
+    return res.status(400).json({ error: '请填写姓名、有效邮箱和至少 6 位密码' });
+  }
+  const em = email.trim().toLowerCase();
+  if (emailTaken(em)) return res.status(409).json({ error: '该邮箱已被使用' });
+  const hash = await hashPassword(password);
+  const r = db.prepare(`INSERT INTO staff (name, role, email, password_hash, is_admin) VALUES (?, ?, ?, ?, ?)`)
+    .run(name, role, em, hash, is_admin ? 1 : 0);
+  res.status(201).json({ id: r.lastInsertRowid, name, role, email: em, is_admin: is_admin ? 1 : 0, active: 1, has_password: 1 });
+}));
+
+app.patch('/api/staff/:id', aw(async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const target = db.prepare(`SELECT * FROM staff WHERE id = ?`).get(req.params.id);
+  if (!target) return res.status(404).json({ error: '未找到成员' });
+
+  const sets = [];
+  const vals = [];
+  for (const k of ['name', 'role']) {
+    if (k in req.body) {
+      sets.push(`${k} = ?`);
+      vals.push(req.body[k]);
+    }
+  }
+  if ('email' in req.body) {
+    const em = (req.body.email || '').trim().toLowerCase();
+    if (!EMAIL_RE.test(em)) return res.status(400).json({ error: '邮箱格式不正确' });
+    if (emailTaken(em, target.id)) return res.status(409).json({ error: '该邮箱已被使用' });
+    sets.push(`email = ?`);
+    vals.push(em);
+  }
+  const demoting = ('is_admin' in req.body && !req.body.is_admin) || ('active' in req.body && !req.body.active);
+  if (demoting && target.is_admin && !otherAdminCount(target.id)) {
+    return res.status(400).json({ error: '至少要保留一名管理员' });
+  }
+  if ('is_admin' in req.body) {
+    sets.push(`is_admin = ?`);
+    vals.push(req.body.is_admin ? 1 : 0);
+  }
+  if ('active' in req.body) {
+    sets.push(`active = ?`);
+    vals.push(req.body.active ? 1 : 0);
+  }
+  let killSessions = 'active' in req.body && !req.body.active;
+  if (req.body.password) {
+    if (String(req.body.password).length < 6) return res.status(400).json({ error: '密码至少 6 位' });
+    sets.push(`password_hash = ?`);
+    vals.push(await hashPassword(String(req.body.password)));
+    killSessions = true; // 改密后旧登录全部失效
+  }
+  if (!sets.length) return res.status(400).json({ error: '无可更新字段' });
+  db.prepare(`UPDATE staff SET ${sets.join(', ')} WHERE id = ?`).run(...vals, target.id);
+  if (killSessions) db.prepare(`DELETE FROM sessions WHERE staff_id = ?`).run(target.id);
+  res.json(db.prepare(`SELECT id, name, role, active, email, is_admin, (password_hash IS NOT NULL) AS has_password FROM staff WHERE id = ?`).get(target.id));
+}));
 
 // ---------- 总览 ----------
 app.get('/api/overview', (req, res) => {

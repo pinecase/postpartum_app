@@ -9,7 +9,8 @@ import Handover from './pages/Handover';
 import Admission from './pages/Admission';
 import Admin from './pages/Admin';
 import { APP_VERSION } from './version';
-import PinGate from './components/PinGate';
+import { api, getAuthStaff, getAuthToken, clearAuth } from './api';
+import LoginGate from './components/LoginGate';
 import UpdateBanner from './components/UpdateBanner';
 
 function BottomNav() {
@@ -38,6 +39,14 @@ const ROLES = ['护士', '护士长', '月嫂', '医生'];
 function Header() {
   const { staff, current, setCurrent, addStaff } = useStaff();
   const { lang, setLang, t, tv } = useI18n();
+  const authStaff = getAuthStaff();
+
+  const logout = async () => {
+    if (!window.confirm(t('auth.logoutConfirm'))) return;
+    if (getAuthToken()) await api.post('/api/auth/logout', {}).catch(() => {});
+    clearAuth();
+    window.location.reload();
+  };
 
   const onPick = async (value: string) => {
     if (value !== '__add__') {
@@ -89,6 +98,11 @@ function Header() {
           ))}
           <option value="__add__">{t('header.addStaff')}</option>
         </select>
+        {authStaff && getAuthToken() && (
+          <button className="btn-link" onClick={logout} title={authStaff.email || ''}>
+            {authStaff.name} · {t('auth.logout')}
+          </button>
+        )}
       </div>
     </header>
   );
@@ -111,7 +125,7 @@ export default function App() {
           </Routes>
         </main>
         <BottomNav />
-        <PinGate />
+        <LoginGate />
         <UpdateBanner />
       </StaffProvider>
     </I18nProvider>
