@@ -146,6 +146,55 @@ describe('管理后台', () => {
   });
 });
 
+describe('宝宝设置与妈妈日常安排（v2.4）', () => {
+  it('设置宝宝喂奶间隔', async () => {
+    const r = await patch(`/api/babies/${babyId}`, { feed_interval_min: 150 });
+    expect(r.status).toBe(200);
+    expect((await j(r)).feed_interval_min).toBe(150);
+  });
+
+  it('宝宝 PATCH 无字段返回 400，不存在返回 404', async () => {
+    expect((await patch(`/api/babies/${babyId}`, {})).status).toBe(400);
+    expect((await patch('/api/babies/99999', { feed_interval_min: 120 })).status).toBe(404);
+  });
+
+  it('安排：创建 → 今明列表（含房号）→ 编辑 → 完成 → 删除', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const r = await post(`/api/mothers/${motherId}/appointments`, {
+      date: today, time: '13:30', title: '洗头', created_by: '张敏',
+    });
+    expect(r.status).toBe(201);
+    const appt = await j(r);
+
+    const up = await j(await fetch(`${BASE}/api/appointments/upcoming?days=1`));
+    const row = up.find((a: { id: number }) => a.id === appt.id);
+    expect(row.room).toBe('902');
+    expect(row.mother_name).toBe('陈太');
+
+    const pr = await patch(`/api/appointments/${appt.id}`, { time: '15:00', title: '红外线照灯' });
+    expect((await j(pr)).title).toBe('红外线照灯');
+
+    await patch(`/api/appointments/${appt.id}`, { status: '已完成' });
+    const up2 = await j(await fetch(`${BASE}/api/appointments/upcoming?days=1`));
+    expect(up2.find((a: { id: number }) => a.id === appt.id)).toBeUndefined(); // 完成后不再提醒
+
+    expect((await fetch(`${BASE}/api/appointments/${appt.id}`, { method: 'DELETE' })).status).toBe(200);
+    expect((await fetch(`${BASE}/api/appointments/99999`, { method: 'DELETE' })).status).toBe(404);
+  });
+
+  it('安排缺少日期或项目返回 400', async () => {
+    expect((await post(`/api/mothers/${motherId}/appointments`, { title: '洗头' })).status).toBe(400);
+  });
+
+  it('妈妈的安排列表按日期返回', async () => {
+    await post(`/api/mothers/${motherId}/appointments`, { date: '2030-01-02', title: 'B' });
+    await post(`/api/mothers/${motherId}/appointments`, { date: '2030-01-01', title: 'A' });
+    const list = await j(await fetch(`${BASE}/api/mothers/${motherId}/appointments`));
+    const idx = (t: string) => list.findIndex((a: { title: string }) => a.title === t);
+    expect(idx('A')).toBeLessThan(idx('B'));
+  });
+});
+
 describe('访问 PIN（放最后，设置后影响其它接口）', () => {
   it('设置 PIN → 无码 401 → 带码 200 → 错误旧码改码 403', async () => {
     expect((await post('/api/auth/pin', { new_pin: '4321' })).status).toBe(200);
