@@ -48,12 +48,25 @@ export interface Appointment {
   mother_id: number;
   date: string;
   time: string | null;
+  end_time: string | null;
   title: string;
   notes: string | null;
   status: string;
   created_by: string | null;
   mother_name?: string;
   room?: string;
+}
+
+export interface MotherPackage {
+  id: number;
+  mother_id: number;
+  name: string;
+  total_sessions: number;
+  used_manual: number;
+  notes: string | null;
+  used_auto: number;
+  used: number;
+  remaining: number;
 }
 
 export interface Feed {
@@ -169,7 +182,10 @@ export interface OverviewBaby extends Baby {
 }
 
 export interface Overview {
-  rooms: { mother: Mother & { latest_vital: MotherVital | null }; babies: OverviewBaby[] }[];
+  rooms: {
+    mother: Mother & { latest_vital: MotherVital | null; next_appointment: Appointment | null };
+    babies: OverviewBaby[];
+  }[];
   alerts: Alert[];
   pending_tasks: CareTask[];
   stats: { mothers_in_house: number; babies_in_house: number; pending_task_count: number };
@@ -258,6 +274,12 @@ export const api = {
     }).then((r) => handle<T>(r)),
   del: <T>(url: string) => fetch(url, { method: 'DELETE', headers: authHeaders() }).then((r) => handle<T>(r)),
 };
+
+// 安排的时间/时间段显示（如 11:30–15:00）
+export function apptTimeRange(a: { time: string | null; end_time?: string | null }): string {
+  if (!a.time) return '';
+  return a.end_time ? `${a.time}–${a.end_time}` : a.time;
+}
 
 export function fmtTime(t: string | null | undefined): string {
   if (!t) return '—';

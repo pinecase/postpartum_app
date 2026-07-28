@@ -665,6 +665,43 @@ td.wrap {
   padding: 4px;
 }
 
+/* ---------- 总览：妈妈下一个安排 ---------- */
+.mother-next-appt {
+  margin: 2px 0 6px 4px;
+  font-size: 13px;
+  color: var(--brand-deep);
+  background: var(--brand-soft);
+  border-radius: 8px;
+  padding: 4px 8px;
+  display: inline-block;
+}
+
+/* ---------- 妈妈分享日程页（独立无导航） ---------- */
+.sched-page {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 20px 14px 40px;
+}
+
+.sched-hero {
+  text-align: center;
+  padding: 22px 0 16px;
+}
+
+.sched-hero .sched-icon {
+  font-size: 42px;
+}
+
+.sched-hero h2 {
+  margin: 6px 0 2px;
+  color: var(--brand-deep);
+}
+
+.sched-foot {
+  text-align: center;
+  margin-top: 18px;
+}
+
 .update-banner {
   position: fixed;
   top: 0;

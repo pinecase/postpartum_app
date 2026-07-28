@@ -1,4 +1,4 @@
-import { NavLink, Route, Routes } from 'react-router-dom';
+import { NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { StaffProvider, useStaff } from './StaffContext';
 import { I18nProvider, useI18n, LANGS } from './i18n';
 import Dashboard from './pages/Dashboard';
@@ -8,6 +8,7 @@ import Tasks from './pages/Tasks';
 import Handover from './pages/Handover';
 import Admission from './pages/Admission';
 import Admin from './pages/Admin';
+import PublicSchedule from './pages/PublicSchedule';
 import { APP_VERSION } from './version';
 import { api, getAuthStaff, getAuthToken, clearAuth } from './api';
 import LoginGate from './components/LoginGate';
@@ -109,6 +110,19 @@ function Header() {
 }
 
 export default function App() {
+  const { pathname } = useLocation();
+
+  // 妈妈分享页：独立呈现，无导航无登录锁（数据由链接令牌保护）
+  if (pathname.startsWith('/schedule/')) {
+    return (
+      <I18nProvider>
+        <Routes>
+          <Route path="/schedule/:token" element={<PublicSchedule />} />
+        </Routes>
+      </I18nProvider>
+    );
+  }
+
   return (
     <I18nProvider>
       <StaffProvider>

@@ -29,7 +29,8 @@ CREATE TABLE IF NOT EXISTS mothers (
   allergies TEXT,
   notes TEXT,
   status TEXT NOT NULL DEFAULT '在住',
-  discharged_at TEXT
+  discharged_at TEXT,
+  share_token TEXT
 );
 
 CREATE TABLE IF NOT EXISTS babies (
@@ -50,6 +51,7 @@ CREATE TABLE IF NOT EXISTS appointments (
   mother_id INTEGER NOT NULL REFERENCES mothers(id),
   date TEXT NOT NULL,
   time TEXT,
+  end_time TEXT,
   title TEXT NOT NULL,
   notes TEXT,
   status TEXT NOT NULL DEFAULT '待办',
@@ -57,6 +59,16 @@ CREATE TABLE IF NOT EXISTS appointments (
 );
 
 CREATE INDEX IF NOT EXISTS idx_appt_date ON appointments(date, status);
+
+-- 配套治疗（如瘦身针灸 10 次）：剩余次数 = 总次数 - 已完成同名安排 - 手动调整
+CREATE TABLE IF NOT EXISTS mother_packages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  mother_id INTEGER NOT NULL REFERENCES mothers(id),
+  name TEXT NOT NULL,
+  total_sessions INTEGER NOT NULL,
+  used_manual INTEGER NOT NULL DEFAULT 0,
+  notes TEXT
+);
 
 CREATE TABLE IF NOT EXISTS baby_feeds (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

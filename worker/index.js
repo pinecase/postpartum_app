@@ -67,6 +67,7 @@ const accountsExist = async (db) => {
 // 已建账号 → 需登录（X-Auth-Token）；PIN 仍可作全店共用兜底；两者都没设置时开放
 app.use('/api/*', async (c, next) => {
   if (c.req.path.startsWith('/api/auth/')) return next();
+  if (c.req.path.startsWith('/api/public/')) return next(); // 妈妈分享页：凭链接令牌访问
   const db = c.env.DB;
   const staff = await staffByToken(db, c.req.header('x-auth-token'));
   if (staff) {
@@ -300,6 +301,11 @@ app.get('/api/overview', async (c) => {
       .prepare(`SELECT * FROM mother_vitals WHERE mother_id = ? ORDER BY time DESC LIMIT 1`)
       .bind(m.id)
       .first();
+    const nextAppt = await db
+      .prepare(`SELECT * FROM appointments WHERE mother_id = ? AND status = '待办' AND date >= ? ORDER BY date, time LIMIT 1`)
+      .bind(m.id, todayStr())
+      .first()
+      .catch(() => null);
     const babies = (
       await db.prepare(`SELECT * FROM babies WHERE mother_id = ? AND status = '在住'`).bind(m.id).all()
     ).results;
@@ -322,7 +328,7 @@ app.get('/api/overview', async (c) => {
         diapers_today: dt.results[0].c,
       });
     }
-    rooms.push({ mother: { ...m, latest_vital: latestVital || null }, babies: babyRows });
+    rooms.push({ mother: { ...m, latest_vital: latestVital || null, next_appointment: nextAppt || null }, babies: babyRows });
   }
 
   const pendingTasks = (
@@ -512,8 +518,8 @@ app.post('/api/mothers/:id/appointments', async (c) => {
   const b = await c.req.json();
   if (!b.date || !b.title) return err(c, 400, '日期与项目必填');
   const r = await c.env.DB.prepare(
-    `INSERT INTO appointments (mother_id, date, time, title, notes, created_by) VALUES (?, ?, ?, ?, ?, ?)`
-  ).bind(c.req.param('id'), b.date, b.time ?? null, b.title, b.notes ?? null, b.created_by ?? null).run();
+    `INSERT INTO appointments (mother_id, date, time, end_time, title, notes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).bind(c.req.param('id'), b.date, b.time ?? null, b.end_time ?? null, b.title, b.notes ?? null, b.created_by ?? null).run();
   return c.json(
     await c.env.DB.prepare(`SELECT * FROM appointments WHERE id = ?`).bind(r.meta.last_row_id).first(),
     201
@@ -524,7 +530,7 @@ app.patch('/api/appointments/:id', async (c) => {
   const b = await c.req.json();
   const sets = [];
   const vals = [];
-  for (const k of ['date', 'time', 'title', 'notes', 'status']) {
+  for (const k of ['date', 'time', 'end_time', 'title', 'notes', 'status']) {
     if (k in b) {
       sets.push(`${k} = ?`);
       vals.push(b[k]);
@@ -541,6 +547,84 @@ app.delete('/api/appointments/:id', async (c) => {
   const r = await c.env.DB.prepare(`DELETE FROM appointments WHERE id = ?`).bind(c.req.param('id')).run();
   if (!r.meta.changes) return err(c, 404, '未找到安排');
   return c.json({ ok: true });
+});
+
+// ---------- 配套治疗（剩余次数，代替本子记录，仅内部可见） ----------
+// 已用 = 已完成的同名安排数 + 手动调整（App 之外做过的次数）
+const packagesWithUsage = async (db, motherId) => {
+  const { results } = await db.prepare(`SELECT * FROM mother_packages WHERE mother_id = ? ORDER BY id`).bind(motherId).all();
+  const out = [];
+  for (const p of results) {
+    const auto = (await db.prepare(
+      `SELECT COUNT(*) AS c FROM appointments WHERE mother_id = ? AND title = ? AND status = '已完成'`
+    ).bind(motherId, p.name).first()).c;
+    const used = auto + p.used_manual;
+    out.push({ ...p, used_auto: auto, used, remaining: Math.max(0, p.total_sessions - used) });
+  }
+  return out;
+};
+
+app.get('/api/mothers/:id/packages', async (c) => {
+  return c.json(await packagesWithUsage(c.env.DB, c.req.param('id')));
+});
+
+app.post('/api/mothers/:id/packages', async (c) => {
+  const { name, total_sessions, used_manual = 0, notes } = await c.req.json();
+  if (!name || !Number.isInteger(total_sessions) || total_sessions < 1) {
+    return err(c, 400, '项目名称与总次数必填');
+  }
+  const id = c.req.param('id');
+  await c.env.DB.prepare(`INSERT INTO mother_packages (mother_id, name, total_sessions, used_manual, notes) VALUES (?, ?, ?, ?, ?)`)
+    .bind(id, name, total_sessions, used_manual, notes ?? null).run();
+  return c.json(await packagesWithUsage(c.env.DB, id), 201);
+});
+
+app.patch('/api/packages/:id', async (c) => {
+  const p = await c.env.DB.prepare(`SELECT * FROM mother_packages WHERE id = ?`).bind(c.req.param('id')).first();
+  if (!p) return err(c, 404, '未找到配套');
+  const b = await c.req.json();
+  const sets = [];
+  const vals = [];
+  for (const k of ['name', 'total_sessions', 'used_manual', 'notes']) {
+    if (k in b) {
+      sets.push(`${k} = ?`);
+      vals.push(b[k]);
+    }
+  }
+  if (!sets.length) return err(c, 400, '无可更新字段');
+  await c.env.DB.prepare(`UPDATE mother_packages SET ${sets.join(', ')} WHERE id = ?`).bind(...vals, p.id).run();
+  return c.json(await packagesWithUsage(c.env.DB, p.mother_id));
+});
+
+app.delete('/api/packages/:id', async (c) => {
+  const r = await c.env.DB.prepare(`DELETE FROM mother_packages WHERE id = ?`).bind(c.req.param('id')).run();
+  if (!r.meta.changes) return err(c, 404, '未找到配套');
+  return c.json({ ok: true });
+});
+
+// ---------- 妈妈只读分享页 ----------
+// 员工为妈妈生成分享链接；妈妈无需登录，凭链接查看自己的日程
+app.post('/api/mothers/:id/share-token', async (c) => {
+  const db = c.env.DB;
+  const m = await db.prepare(`SELECT id, share_token FROM mothers WHERE id = ?`).bind(c.req.param('id')).first();
+  if (!m) return err(c, 404, '未找到产妇');
+  let token = m.share_token;
+  const body = await c.req.json().catch(() => ({}));
+  if (!token || body?.rotate) {
+    token = newToken().slice(0, 24);
+    await db.prepare(`UPDATE mothers SET share_token = ? WHERE id = ?`).bind(token, m.id).run();
+  }
+  return c.json({ token });
+});
+
+app.get('/api/public/schedule/:token', async (c) => {
+  const db = c.env.DB;
+  const m = await db.prepare(`SELECT id, name, room FROM mothers WHERE share_token = ?`).bind(c.req.param('token')).first().catch(() => null);
+  if (!m) return err(c, 404, '链接无效');
+  const { results } = await db
+    .prepare(`SELECT id, date, time, end_time, title, notes, status FROM appointments WHERE mother_id = ? ORDER BY date, time`)
+    .bind(m.id).all();
+  return c.json({ mother: { name: m.name, room: m.room }, appointments: results });
 });
 
 app.post('/api/babies/:id/feeds', async (c) => {

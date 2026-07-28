@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ReferenceLine, ResponsiveContainer, CartesianGrid, Legend,
 } from 'recharts';
-import { api, fmtTime, dayOfLife, localDatetimeValue, MotherDetailData, Appointment } from '../api';
+import { api, fmtTime, dayOfLife, localDatetimeValue, apptTimeRange, MotherDetailData, Appointment, MotherPackage } from '../api';
 import { useStaff } from '../StaffContext';
 import { useI18n } from '../i18n';
 import Modal from '../components/Modal';
@@ -100,6 +100,8 @@ export default function MotherDetail() {
       </div>
 
       <ApptSection motherId={data.id} createdBy={current} />
+
+      <PackageSection motherId={data.id} />
 
       {chartData.length > 1 && (
         <div className="chart-grid" style={{ marginBottom: 14 }}>
@@ -207,7 +209,9 @@ function ApptSection({ motherId, createdBy }: { motherId: number; createdBy: str
   const [adding, setAdding] = useState(false);
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [time, setTime] = useState('');
+  const [endTime, setEndTime] = useState('');
   const [title, setTitle] = useState('');
+  const [shareMsg, setShareMsg] = useState('');
 
   const load = useCallback(
     () => api.get<Appointment[]>(`/api/mothers/${motherId}/appointments`).then(setItems),
@@ -220,11 +224,24 @@ function ApptSection({ motherId, createdBy }: { motherId: number; createdBy: str
   const save = async () => {
     if (!title.trim()) return;
     await api.post(`/api/mothers/${motherId}/appointments`, {
-      date, time: time || null, title: title.trim(), created_by: createdBy,
+      date, time: time || null, end_time: endTime || null, title: title.trim(), created_by: createdBy,
     });
     setTitle('');
     setAdding(false);
     load();
+  };
+
+  // 生成/复制妈妈专属的只读日程链接（妈妈无需登录，用手机打开即可看）
+  const share = async () => {
+    setShareMsg('');
+    const { token } = await api.post<{ token: string }>(`/api/mothers/${motherId}/share-token`, {});
+    const url = `${window.location.origin}/schedule/${token}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setShareMsg(t('appt.shareCopied'));
+    } catch {
+      window.prompt(t('appt.shareManual'), url);
+    }
   };
 
   const complete = async (a: Appointment) => {
@@ -243,7 +260,9 @@ function ApptSection({ motherId, createdBy }: { motherId: number; createdBy: str
       <h3>
         {t('appt.section')}
         <button className="btn btn-sm" onClick={() => setAdding(!adding)}>{t('appt.add')}</button>
+        <button className="btn btn-sm" onClick={share}>{t('appt.share')}</button>
       </h3>
+      {shareMsg && <div className="meta" style={{ marginBottom: 8 }}>{shareMsg}</div>}
       {adding && (
         <div style={{ marginBottom: 12 }}>
           <div className="form-grid">
@@ -254,6 +273,10 @@ function ApptSection({ motherId, createdBy }: { motherId: number; createdBy: str
             <div className="field">
               <label>{t('appt.time')}</label>
               <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+            </div>
+            <div className="field">
+              <label>{t('appt.endTime')}</label>
+              <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
             </div>
             <div className="field full">
               <label>{t('appt.item')}</label>
@@ -275,7 +298,7 @@ function ApptSection({ motherId, createdBy }: { motherId: number; createdBy: str
       {items.map((a) => (
         <div className="task-item" key={a.id}>
           <span className={`badge ${a.status === '已完成' ? 'badge-done' : 'badge-info'}`}>
-            {a.date} {a.time || ''}
+            {a.date} {apptTimeRange(a)}
           </span>
           <span className="title" style={a.status === '已完成' ? { textDecoration: 'line-through', color: 'var(--muted)' } : {}}>
             {a.title}
@@ -289,6 +312,104 @@ function ApptSection({ motherId, createdBy }: { motherId: number; createdBy: str
         </div>
       ))}
       {items.length === 0 && !adding && <div className="empty">{t('appt.none')}</div>}
+    </div>
+  );
+}
+
+// 配套治疗剩余次数（内部查看，代替本子记录）：
+// 已用 = 已完成的同名安排（自动统计）＋ 手动调整（App 外做过的次数）
+function PackageSection({ motherId }: { motherId: number }) {
+  const { t } = useI18n();
+  const [items, setItems] = useState<MotherPackage[]>([]);
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState('');
+  const [total, setTotal] = useState('');
+  const [preUsed, setPreUsed] = useState('');
+
+  const load = useCallback(
+    () => api.get<MotherPackage[]>(`/api/mothers/${motherId}/packages`).then(setItems).catch(() => {}),
+    [motherId]
+  );
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const save = async () => {
+    if (!name.trim() || !Number(total)) return;
+    await api.post(`/api/mothers/${motherId}/packages`, {
+      name: name.trim(), total_sessions: Number(total), used_manual: Number(preUsed) || 0,
+    });
+    setName('');
+    setTotal('');
+    setPreUsed('');
+    setAdding(false);
+    load();
+  };
+
+  const adjust = async (p: MotherPackage, delta: number) => {
+    await api.patch(`/api/packages/${p.id}`, { used_manual: Math.max(0, p.used_manual + delta) });
+    load();
+  };
+
+  const remove = async (p: MotherPackage) => {
+    if (!window.confirm(t('common.confirmDelete'))) return;
+    await api.del(`/api/packages/${p.id}`);
+    load();
+  };
+
+  return (
+    <div className="card">
+      <h3>
+        💆 {t('pkg.section')}
+        <button className="btn btn-sm" onClick={() => setAdding(!adding)}>{t('pkg.add')}</button>
+      </h3>
+      <p className="meta" style={{ marginBottom: 8 }}>{t('pkg.hint')}</p>
+      {adding && (
+        <div style={{ marginBottom: 12 }}>
+          <div className="form-grid">
+            <div className="field full">
+              <label>{t('appt.item')}</label>
+              <div className="chip-row" style={{ marginBottom: 6 }}>
+                {APPT_PRESETS.map((p) => (
+                  <button type="button" key={p} className={`chip ${name === p ? 'on' : ''}`} onClick={() => setName(p)}>
+                    {p}
+                  </button>
+                ))}
+              </div>
+              <input value={name} onChange={(e) => setName(e.target.value)} />
+            </div>
+            <div className="field">
+              <label>{t('pkg.total')}</label>
+              <input type="number" min={1} value={total} onChange={(e) => setTotal(e.target.value)} />
+            </div>
+            <div className="field">
+              <label>{t('pkg.preUsed')}</label>
+              <input type="number" min={0} value={preUsed} onChange={(e) => setPreUsed(e.target.value)} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+            <button className="btn btn-primary" onClick={save} disabled={!name.trim() || !Number(total)}>
+              {t('common.save')}
+            </button>
+          </div>
+        </div>
+      )}
+      {items.map((p) => (
+        <div className="task-item" key={p.id}>
+          <span className="title">{p.name}</span>
+          <span className="meta">
+            {t('pkg.usage', { used: p.used, total: p.total_sessions })}
+          </span>
+          <span className={`badge ${p.remaining === 0 ? 'badge-done' : p.remaining <= 2 ? 'badge-warning' : 'badge-info'}`}>
+            {t('pkg.remaining', { n: p.remaining })}
+          </span>
+          <span className="spacer" />
+          <button className="btn btn-sm" title={t('pkg.useOne')} onClick={() => adjust(p, 1)}>+1</button>
+          <button className="btn btn-sm" title={t('pkg.undoOne')} onClick={() => adjust(p, -1)} disabled={p.used_manual <= 0}>−1</button>
+          <button className="btn btn-sm" onClick={() => remove(p)}>✕</button>
+        </div>
+      ))}
+      {items.length === 0 && !adding && <div className="empty">{t('pkg.none')}</div>}
     </div>
   );
 }

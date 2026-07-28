@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { api, fmtTime, dayOfLife, Overview, Appointment } from '../api';
+import { api, fmtTime, dayOfLife, apptTimeRange, Overview, Appointment } from '../api';
 import { useI18n } from '../i18n';
 import { useStaff } from '../StaffContext';
 
@@ -23,6 +23,28 @@ function notifyDueFeeds(data: Overview, t: (k: string, p?: Record<string, string
       }
     }
   }
+}
+
+// 妈妈日常安排提醒：提前一天（含当天）弹浏览器通知，每条安排只提醒一次（记在本机）
+function notifyAppointments(appts: Appointment[], t: (k: string, p?: Record<string, string | number>) => string) {
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  let seen: string[] = [];
+  try {
+    seen = JSON.parse(localStorage.getItem('appt_notified') || '[]');
+  } catch { /* 忽略损坏的记录 */ }
+  const todayStr = new Date().toISOString().slice(0, 10);
+  for (const a of appts) {
+    if (a.status !== '待办') continue;
+    const key = `${a.id}:${a.date}`;
+    if (seen.includes(key)) continue;
+    seen.push(key);
+    const when = a.date === todayStr ? t('appt.today2') : t('appt.tomorrow');
+    new Notification(`📅 ${a.room || ''} ${a.mother_name || ''}`, {
+      body: `${when} ${apptTimeRange(a)} ${a.title}`,
+      tag: key,
+    });
+  }
+  localStorage.setItem('appt_notified', JSON.stringify(seen.slice(-200)));
 }
 
 // 距上次喂养的计时环：按每个宝宝设定的喂奶间隔上色（默认 3 小时）
@@ -86,7 +108,12 @@ export default function Dashboard() {
 
   useEffect(() => {
     load();
-    api.get<Appointment[]>('/api/appointments/upcoming?days=1').then(setAppts).catch(() => {});
+    api.get<Appointment[]>('/api/appointments/upcoming?days=1')
+      .then((a) => {
+        setAppts(a);
+        notifyAppointments(a, t); // 提前一天 pop-up 提醒
+      })
+      .catch(() => {});
     const timer = setInterval(load, 60_000);
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -149,7 +176,7 @@ export default function Dashboard() {
           {appts.map((a) => (
             <div className="task-item" key={a.id}>
               <span className={`badge ${a.date === todayStr ? 'badge-warning' : 'badge-info'}`}>
-                {a.date === todayStr ? t('appt.today2') : t('appt.tomorrow')} {a.time || ''}
+                {a.date === todayStr ? t('appt.today2') : t('appt.tomorrow')} {apptTimeRange(a)}
               </span>
               <span className="badge badge-room">{a.room}</span>
               <span className="badge badge-mother">{a.mother_name}</span>
@@ -203,6 +230,11 @@ export default function Dashboard() {
                     ` · ${t('overview.bp')} ${mother.latest_vital.systolic}/${mother.latest_vital.diastolic}`}
                 </span>
               </div>
+              {mother.next_appointment && (
+                <div className="mother-next-appt">
+                  📅 {mother.next_appointment.date.slice(5)} {apptTimeRange(mother.next_appointment)} {mother.next_appointment.title}
+                </div>
+              )}
             </Link>
             {babies.map((b) => (
               <Link to={`/babies/${b.id}`} key={b.id}>

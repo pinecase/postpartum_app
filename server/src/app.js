@@ -97,6 +97,8 @@ const accountsExist = () => {
 // 已建账号 → 需登录（X-Auth-Token）；PIN 仍可作全店共用兜底；两者都没设置时开放
 app.use('/api', (req, res, next) => {
   if (req.path.startsWith('/auth/')) return next();
+  if (req.path.startsWith('/public/')) return next(); // 妈妈分享页：凭链接令牌访问
+
   const staff = staffByToken(req.headers['x-auth-token']);
   if (staff) {
     req.staff = staff;
@@ -289,9 +291,16 @@ app.get('/api/overview', (req, res) => {
   const dayStart = new Date();
   dayStart.setHours(0, 0, 0, 0);
   const dayStartIso = dayStart.toISOString();
+  const nextAppt = db.prepare(
+    `SELECT * FROM appointments WHERE mother_id = ? AND status = '待办' AND date >= ? ORDER BY date, time LIMIT 1`
+  );
 
   const rooms = mothers.map((m) => ({
-    mother: { ...m, latest_vital: latestMotherVital.get(m.id) || null },
+    mother: {
+      ...m,
+      latest_vital: latestMotherVital.get(m.id) || null,
+      next_appointment: nextAppt.get(m.id, todayStr()) || null,
+    },
     babies: babiesByMother.all(m.id).map((b) => ({
       ...b,
       latest_vital: latestBabyVital.get(b.id) || null,
@@ -459,18 +468,18 @@ app.get('/api/mothers/:id/appointments', (req, res) => {
 });
 
 app.post('/api/mothers/:id/appointments', (req, res) => {
-  const { date, time, title, notes, created_by } = req.body;
+  const { date, time, end_time, title, notes, created_by } = req.body;
   if (!date || !title) return res.status(400).json({ error: '日期与项目必填' });
   const r = db.prepare(
-    `INSERT INTO appointments (mother_id, date, time, title, notes, created_by) VALUES (?, ?, ?, ?, ?, ?)`
-  ).run(req.params.id, date, time ?? null, title, notes ?? null, created_by ?? null);
+    `INSERT INTO appointments (mother_id, date, time, end_time, title, notes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(req.params.id, date, time ?? null, end_time ?? null, title, notes ?? null, created_by ?? null);
   res.status(201).json(db.prepare(`SELECT * FROM appointments WHERE id = ?`).get(r.lastInsertRowid));
 });
 
 app.patch('/api/appointments/:id', (req, res) => {
   const sets = [];
   const vals = [];
-  for (const k of ['date', 'time', 'title', 'notes', 'status']) {
+  for (const k of ['date', 'time', 'end_time', 'title', 'notes', 'status']) {
     if (k in req.body) {
       sets.push(`${k} = ?`);
       vals.push(req.body[k]);
@@ -501,6 +510,76 @@ app.get('/api/appointments/upcoming', (req, res) => {
        ORDER BY a.date, a.time`
     ).all(from, to)
   );
+});
+
+// ---------- 配套治疗（剩余次数，代替本子记录，仅内部可见） ----------
+// 已用 = 已完成的同名安排数 + 手动调整（App 之外做过的次数）
+const packagesWithUsage = (motherId) => {
+  const usedAuto = db.prepare(
+    `SELECT COUNT(*) AS c FROM appointments WHERE mother_id = ? AND title = ? AND status = '已完成'`
+  );
+  return db.prepare(`SELECT * FROM mother_packages WHERE mother_id = ? ORDER BY id`).all(motherId).map((p) => {
+    const used = usedAuto.get(motherId, p.name).c + p.used_manual;
+    return { ...p, used_auto: used - p.used_manual, used, remaining: Math.max(0, p.total_sessions - used) };
+  });
+};
+
+app.get('/api/mothers/:id/packages', (req, res) => {
+  res.json(packagesWithUsage(req.params.id));
+});
+
+app.post('/api/mothers/:id/packages', (req, res) => {
+  const { name, total_sessions, used_manual = 0, notes } = req.body;
+  if (!name || !Number.isInteger(total_sessions) || total_sessions < 1) {
+    return res.status(400).json({ error: '项目名称与总次数必填' });
+  }
+  db.prepare(`INSERT INTO mother_packages (mother_id, name, total_sessions, used_manual, notes) VALUES (?, ?, ?, ?, ?)`)
+    .run(req.params.id, name, total_sessions, used_manual, notes ?? null);
+  res.status(201).json(packagesWithUsage(req.params.id));
+});
+
+app.patch('/api/packages/:id', (req, res) => {
+  const p = db.prepare(`SELECT * FROM mother_packages WHERE id = ?`).get(req.params.id);
+  if (!p) return res.status(404).json({ error: '未找到配套' });
+  const sets = [];
+  const vals = [];
+  for (const k of ['name', 'total_sessions', 'used_manual', 'notes']) {
+    if (k in req.body) {
+      sets.push(`${k} = ?`);
+      vals.push(req.body[k]);
+    }
+  }
+  if (!sets.length) return res.status(400).json({ error: '无可更新字段' });
+  db.prepare(`UPDATE mother_packages SET ${sets.join(', ')} WHERE id = ?`).run(...vals, p.id);
+  res.json(packagesWithUsage(p.mother_id));
+});
+
+app.delete('/api/packages/:id', (req, res) => {
+  const r = db.prepare(`DELETE FROM mother_packages WHERE id = ?`).run(req.params.id);
+  if (!r.changes) return res.status(404).json({ error: '未找到配套' });
+  res.json({ ok: true });
+});
+
+// ---------- 妈妈只读分享页 ----------
+// 员工为妈妈生成分享链接；妈妈无需登录，凭链接查看自己的日程
+app.post('/api/mothers/:id/share-token', (req, res) => {
+  const m = db.prepare(`SELECT id, share_token FROM mothers WHERE id = ?`).get(req.params.id);
+  if (!m) return res.status(404).json({ error: '未找到产妇' });
+  let token = m.share_token;
+  if (!token || req.body?.rotate) {
+    token = newToken().slice(0, 24);
+    db.prepare(`UPDATE mothers SET share_token = ? WHERE id = ?`).run(token, m.id);
+  }
+  res.json({ token });
+});
+
+app.get('/api/public/schedule/:token', (req, res) => {
+  const m = db.prepare(`SELECT id, name, room FROM mothers WHERE share_token = ?`).get(req.params.token);
+  if (!m) return res.status(404).json({ error: '链接无效' });
+  const appointments = db
+    .prepare(`SELECT id, date, time, end_time, title, notes, status FROM appointments WHERE mother_id = ? ORDER BY date, time`)
+    .all(m.id);
+  res.json({ mother: { name: m.name, room: m.room }, appointments });
 });
 
 app.post('/api/babies/:id/feeds', (req, res) => {
