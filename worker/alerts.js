@@ -50,7 +50,8 @@ export async function computeAlerts(db) {
       .prepare(`SELECT * FROM baby_feeds WHERE baby_id = ? ORDER BY time DESC LIMIT 1`)
       .bind(b.id)
       .first();
-    if (f && new Date(f.time).getTime() < Date.now() - 4 * HOURS) {
+    const gapMs = b.feed_interval_min ? b.feed_interval_min * 60000 : 4 * HOURS;
+    if (f && new Date(f.time).getTime() < Date.now() - gapMs) {
       const hrs = Math.floor((Date.now() - new Date(f.time).getTime()) / HOURS);
       alerts.push({ ...subject, level: 'warning', code: 'feed_gap', params: { hours: hrs }, message: `已 ${hrs} 小时未记录喂养`, time: f.time });
     } else if (!f) {

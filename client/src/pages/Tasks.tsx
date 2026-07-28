@@ -23,7 +23,7 @@ interface FieldDef {
   id: string;
   labelKey: string;
   short: string;
-  kind: 'number' | 'select' | 'text' | 'time';
+  kind: 'number' | 'select' | 'text' | 'time' | 'multi' | 'vomit';
   unit?: string;
   step?: string;
   options?: string[];
@@ -42,23 +42,29 @@ const isMixed = (fv: Record<string, string>) => fv.method === '混合喂养';
 const isBottle = (fv: Record<string, string>) => fv.method === '瓶喂母乳' || fv.method === '配方奶';
 const hasStool = (fv: Record<string, string>) => !!fv.stool && fv.stool !== '无';
 
+// 大小便按护理量表计数（可为半次）
 const URINE_STOOL: FieldDef[] = [
-  sel('urine', 'tasks.urineAmt', '小便量', ['无', '少', '中', '多']),
-  sel('stool', 'tasks.stoolAmt', '大便量', ['无', '少', '中', '多']),
+  sel('urine', 'tasks.urineAmt', '小便', ['0.5', '1', '2']),
+  sel('stool', 'tasks.stoolAmt', '大便', ['0.1', '0.5', '1', '2']),
 ];
 
-const CLEAN_OPTS = ['已清洁', '有分泌物', '红肿'];
+const ORAL_OPTS = ['Clean', 'Milk residue', 'Tofu paste', 'Pearl spot', 'Oral thrush', 'Tongue tie wound'];
+const UC_OPTS = ['Clean', 'Yellowish', 'Brownish', 'Bloodstain', 'Bleeding', 'Bloodclot', 'Smelly', 'Damp', 'Granulation', 'Almost drop', 'Drop', 'Root redness', 'Swollen'];
+const ABDOMEN_OPTS = ['Done', 'Soft', '---'];
+const VOMIT_STEPS = [0.1, 0.5, 1, 2];
 
 const TYPE_FIELDS: Record<string, FieldDef[]> = {
   '喂奶时间': [
     sel('method', 'feeds.method', '方式', ['母乳亲喂', '瓶喂母乳', '配方奶', '混合喂养']),
-    sel('side', 'tasks.sideBreast', '哺乳侧', ['左', '右', '双侧'], isBF),
     sel('position', 'tasks.position', '姿势', ['摇篮式', '橄榄球式', '侧躺式', '半躺式'], isBF),
-    num('duration', 'feeds.durationMin', '时长', 'min', undefined, isBF),
+    num('durL', 'tasks.leftMin', '左', 'min', undefined, isBF),
+    num('durR', 'tasks.rightMin', '右', 'min', undefined, isBF),
     num('bm', 'tasks.bmMl', '母乳', 'ml', undefined, isMixed),
     num('fm', 'tasks.fmMl', '配方奶', 'ml', undefined, isMixed),
     num('amount', 'feeds.amountMl', '奶量', 'ml', undefined, isBottle),
+    { id: 'fmnote', labelKey: 'tasks.fmNote', short: '', kind: 'text', showIf: (fv) => fv.method === '配方奶' || fv.method === '混合喂养' },
     ...URINE_STOOL,
+    { id: 'vomit', labelKey: 'tasks.vomit', short: '吐奶', kind: 'vomit' },
   ],
   '换尿布': [
     ...URINE_STOOL,
@@ -70,23 +76,30 @@ const TYPE_FIELDS: Record<string, FieldDef[]> = {
     num('rr', 'vitals.respUnit', '呼吸', '/min'),
     num('spo2', 'tasks.spo2', 'SpO₂', '%'),
   ],
-  // 洗澡：与 mother care 一致的结构化护理清单
+  // 洗澡/护理：结构化清单（口腔选项、眼鼻耳自由填写、U/C 多选、腹部按摩）
   '洗澡记录': [
-    num('weight', 'vitals.weightG', '体重', 'g'),
+    num('temp', 'vitals.tempC', '体温', '°C', '0.1'),
     num('jaundice', 'vitals.jaundiceUnit', '黄疸', 'mg/dL', '0.1'),
-    sel('oral', 'tasks.oral', '口腔', CLEAN_OPTS),
-    sel('nasal', 'tasks.nasal', '鼻腔', CLEAN_OPTS),
-    sel('eye', 'tasks.eye', '眼部', CLEAN_OPTS),
-    sel('ear', 'tasks.ear', '耳部', CLEAN_OPTS),
-    sel('cord', 'tasks.cord', '脐部', ['干燥正常', '红肿', '渗液', '已消毒']),
+    num('weight', 'vitals.weightG', '体重', 'g'),
+    ...URINE_STOOL,
+    { id: 'vomit', labelKey: 'tasks.vomit', short: '吐奶', kind: 'vomit' },
+    sel('oral', 'tasks.oral', '口腔', ORAL_OPTS),
+    { id: 'eye', labelKey: 'tasks.eye', short: '眼部', kind: 'text' },
+    { id: 'nasal', labelKey: 'tasks.nasal', short: '鼻腔', kind: 'text' },
+    { id: 'ear', labelKey: 'tasks.ear', short: '耳部', kind: 'text' },
+    { id: 'uc', labelKey: 'tasks.cord', short: 'U/C', kind: 'multi', options: UC_OPTS },
+    sel('abdomen', 'tasks.abdomen', '腹部按摩', ABDOMEN_OPTS),
   ],
   '晾臀': [tim('start', 'tasks.startTime', '开始'), tim('end', 'tasks.endTime', '结束')],
   '母婴同室': [sel('inout', 'tasks.inout', '入/出', ['入室', '出室']), ...URINE_STOOL],
 };
 
-// 洗澡清单类字段：合成文字时带上部位名（如「口腔·已清洁」）
-const LABELED_FIELDS = new Set(['oral', 'nasal', 'eye', 'ear', 'cord']);
-const labelWord: Record<string, string> = { oral: '口腔', nasal: '鼻腔', eye: '眼部', ear: '耳部', cord: '脐部' };
+// 清单类字段：合成文字时带上部位名（如「口腔·Clean」「U/C·Damp/Smelly」）
+const LABELED_FIELDS = new Set(['oral', 'nasal', 'eye', 'ear', 'uc', 'abdomen', 'urine', 'stool']);
+const labelWord: Record<string, string> = {
+  oral: '口腔', nasal: '鼻腔', eye: '眼部', ear: '耳部', uc: 'U/C', abdomen: '腹部按摩',
+  urine: '小便', stool: '大便',
+};
 
 // 补充标注：定性内容点选填入说明
 const DETAIL_PRESETS: Record<string, string[]> = {
@@ -142,7 +155,7 @@ export function buildRecordSyncs(s: SyncInput): { url: string; payload: Record<s
 
   const B = (p: string) => `/api/babies/${s.subjectId}/${p}`;
 
-  // 小便/大便量下拉（喂奶/母婴同室/换尿布共用）→ 大小便记录
+  // 小便/大便量下拉（喂奶/洗澡/母婴同室/换尿布共用）→ 大小便记录
   const pushDiaperFromAmounts = (withStoolDetail: boolean) => {
     const urine = v('urine') && v('urine') !== '无';
     const stool = hasStool(s.fieldValues);
@@ -164,17 +177,21 @@ export function buildRecordSyncs(s: SyncInput): { url: string; payload: Record<s
 
   if (s.taskType === '喂奶时间' && v('method')) {
     const extra: string[] = [];
-    if (v('side')) extra.push(v('side'));
+    if (v('durL')) extra.push(`左 ${v('durL')}min`);
+    if (v('durR')) extra.push(`右 ${v('durR')}min`);
     if (v('position')) extra.push(v('position'));
     if (v('bm')) extra.push(`母乳 ${v('bm')}ml`);
     if (v('fm')) extra.push(`配方奶 ${v('fm')}ml`);
+    if (v('fmnote')) extra.push(v('fmnote'));
+    if (v('vomit')) extra.push(`吐奶 ${v('vomit')}`);
     const amount = v('method') === '混合喂养'
       ? (Number(v('bm') || 0) + Number(v('fm') || 0)) || null
       : n('amount');
+    const duration = (Number(v('durL') || 0) + Number(v('durR') || 0)) || null;
     out.push({
       url: B('feeds'),
       payload: {
-        ...base, method: v('method'), amount_ml: amount, duration_min: n('duration'),
+        ...base, method: v('method'), amount_ml: amount, duration_min: duration,
         notes: [...extra, s.notes].filter(Boolean).join('、') || null,
       },
     });
@@ -195,16 +212,21 @@ export function buildRecordSyncs(s: SyncInput): { url: string; payload: Record<s
     });
   } else if (s.taskType === '洗澡记录' && hasContent) {
     const checklist: string[] = [];
-    for (const id of ['oral', 'nasal', 'eye', 'ear', 'cord']) {
+    for (const id of ['oral', 'eye', 'nasal', 'ear', 'uc', 'abdomen']) {
       if (v(id)) checklist.push(`${labelWord[id]}·${v(id)}`);
     }
+    if (v('vomit')) checklist.push(`吐奶 ${v('vomit')}`);
     out.push({
       url: B('cares'),
       payload: { ...base, care_type: s.title, notes: [...checklist, s.notes].filter(Boolean).join('、') || null },
     });
-    if (v('weight') || v('jaundice')) {
-      out.push({ url: B('vitals'), payload: { ...base, weight_g: n('weight'), jaundice_mg_dl: n('jaundice') } });
+    if (v('weight') || v('jaundice') || v('temp')) {
+      out.push({
+        url: B('vitals'),
+        payload: { ...base, temperature_c: n('temp'), weight_g: n('weight'), jaundice_mg_dl: n('jaundice') },
+      });
     }
+    pushDiaperFromAmounts(false);
   } else if (hasContent) {
     const extraParts: string[] = [];
     for (const f of visible) {
@@ -264,6 +286,16 @@ export default function Tasks() {
     load();
   };
 
+  // 一键完成当前列表全部待办
+  const completeAll = async () => {
+    const pending = tasks.filter((tk) => tk.status === '待办');
+    if (!pending.length || !window.confirm(t('tasks.completeAllConfirm', { n: pending.length }))) return;
+    for (const tk of pending) {
+      await api.patch(`/api/tasks/${tk.id}`, { status: '已完成', completed_by: current });
+    }
+    load();
+  };
+
   const filterLabel: Record<Filter, string> = {
     '待办': t('tasks.pending'),
     '已完成': t('tasks.done'),
@@ -280,9 +312,14 @@ export default function Tasks() {
               {filterLabel[f]}
             </button>
           ))}
+          {filter === '待办' && tasks.length > 1 && (
+            <button style={{ marginLeft: 'auto' }} onClick={completeAll}>
+              {t('tasks.completeAll')}
+            </button>
+          )}
           <button
             className="active"
-            style={{ marginLeft: 'auto', background: 'var(--pink)', borderColor: 'var(--pink)' }}
+            style={{ marginLeft: filter === '待办' && tasks.length > 1 ? 0 : 'auto', background: 'var(--pink)', borderColor: 'var(--pink)' }}
             onClick={() => setShowForm(true)}
           >
             {t('tasks.new')}
@@ -445,7 +482,8 @@ function TaskModal({
   );
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
-  // 亲喂计时器
+  // 亲喂左右奶各自计时；结束时把分钟数累加进对应字段，可多次启停
+  const [timerSide, setTimerSide] = useState<'durL' | 'durR' | null>(null);
   const [timerStart, setTimerStart] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -505,18 +543,29 @@ function TaskModal({
     if (timerRef.current) clearInterval(timerRef.current);
   }, []);
 
-  const toggleTimer = () => {
-    if (timerStart == null) {
-      const start = Date.now();
-      setTimerStart(start);
-      setElapsed(0);
-      timerRef.current = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
-    } else {
+  const toggleTimer = (side: 'durL' | 'durR') => {
+    if (timerSide === side && timerStart != null) {
+      // 停止：累加分钟数
       if (timerRef.current) clearInterval(timerRef.current);
       const mins = Math.max(1, Math.round((Date.now() - timerStart) / 60000));
-      setFieldValues((fv) => ({ ...fv, duration: String(mins) }));
+      setFieldValues((fv) => ({ ...fv, [side]: String(Number(fv[side] || 0) + mins) }));
+      setTimerSide(null);
       setTimerStart(null);
+      return;
     }
+    if (timerStart != null && timerRef.current) clearInterval(timerRef.current); // 切边先停旧的（不足1分钟不计）
+    const start = Date.now();
+    setTimerSide(side);
+    setTimerStart(start);
+    setElapsed(0);
+    timerRef.current = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
+  };
+
+  const addVomit = (step: number) => {
+    setFieldValues((fv) => ({
+      ...fv,
+      vomit: String(Math.round((Number(fv.vomit || 0) + step) * 10) / 10),
+    }));
   };
 
   const toggleChip = (chipText: string) => {
@@ -559,7 +608,8 @@ function TaskModal({
   // 数值合理范围校验（防止手误，如体重把 kg 填成 g）
   const RANGES: Record<string, [number, number]> = {
     temp: [34, 43], jaundice: [0, 35], hr: [40, 260], rr: [10, 120], spo2: [50, 100],
-    amount: [1, 500], bm: [1, 500], fm: [1, 500], duration: [1, 240], weight: [100, 8000],
+    amount: [1, 500], bm: [1, 500], fm: [1, 500], duration: [1, 240],
+    durL: [1, 120], durR: [1, 120], weight: [100, 8000],
   };
 
   // 返回校验后（可能已做 kg→g 换算）的字段值；error 非空时中止提交
@@ -603,7 +653,8 @@ function TaskModal({
       if (!v || v === '无') continue;
       if (f.kind === 'number') parts.push(`${tv(f.short)} ${v}${f.unit || ''}`);
       else if (f.kind === 'time') parts.push(`${tv(f.short)} ${v}`);
-      else if (LABELED_FIELDS.has(f.id)) parts.push(`${tv(labelWord[f.id])}·${tv(v)}`);
+      else if (f.kind === 'vomit') parts.push(`${tv('吐奶')} ${v}`);
+      else if (LABELED_FIELDS.has(f.id)) parts.push(`${tv(labelWord[f.id])}·${f.kind === 'select' ? tv(v) : v}`);
       else if (f.kind === 'select') parts.push(tv(v));
       else parts.push(v);
     }
@@ -626,7 +677,8 @@ function TaskModal({
       due_time: timeIso,
       created_by: createdBy,
     };
-    if (photoPayload && !syncs.length) body.photos = photoPayload;
+    // 照片同时挂在任务（列表可见角标）与第一条同步记录（宝宝档案可见）
+    if (photoPayload) body.photos = photoPayload;
 
     setBusy(true);
     setErr('');
@@ -682,7 +734,7 @@ function TaskModal({
             </div>
           )}
           {visibleFields.map((f) => (
-            <div className="field" key={f.id}>
+            <div className={`field ${f.kind === 'multi' || f.kind === 'vomit' ? 'full' : ''}`} key={f.id}>
               <label>{t(f.labelKey)}</label>
               {f.kind === 'select' ? (
                 <select
@@ -694,6 +746,46 @@ function TaskModal({
                     <option key={o} value={o}>{tv(o)}</option>
                   ))}
                 </select>
+              ) : f.kind === 'multi' ? (
+                <div className="chip-row">
+                  {f.options!.map((o) => {
+                    const cur = (fieldValues[f.id] || '').split('/').filter(Boolean);
+                    const on = cur.includes(o);
+                    return (
+                      <button
+                        type="button"
+                        key={o}
+                        className={`chip ${on ? 'on' : ''}`}
+                        onClick={() =>
+                          setFieldValues((fv) => ({
+                            ...fv,
+                            [f.id]: (on ? cur.filter((x) => x !== o) : [...cur, o]).join('/'),
+                          }))
+                        }
+                      >
+                        {tv(o)}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : f.kind === 'vomit' ? (
+                <div className="chip-row" style={{ alignItems: 'center' }}>
+                  {VOMIT_STEPS.map((s) => (
+                    <button type="button" key={s} className="chip" onClick={() => addVomit(s)}>
+                      +{s}
+                    </button>
+                  ))}
+                  <span style={{ fontWeight: 700 }}>{fieldValues.vomit || '0'}</span>
+                  {fieldValues.vomit && (
+                    <button
+                      type="button"
+                      className="chip"
+                      onClick={() => setFieldValues((fv) => ({ ...fv, vomit: '' }))}
+                    >
+                      ↺
+                    </button>
+                  )}
+                </div>
               ) : (
                 <input
                   type={f.kind === 'number' ? 'number' : f.kind === 'time' ? 'time' : 'text'}
@@ -707,15 +799,20 @@ function TaskModal({
           ))}
           {taskType === '喂奶时间' && isBF(fieldValues) && (
             <div className="field full">
-              <button
-                type="button"
-                className={`btn ${timerStart != null ? 'voice-btn listening' : ''}`}
-                onClick={toggleTimer}
-              >
-                {timerStart != null
-                  ? `${t('tasks.timerStop')} ${Math.floor(elapsed / 60)}:${pad(elapsed % 60)}`
-                  : t('tasks.timerStart')}
-              </button>
+              <div className="btn-row">
+                {(['durL', 'durR'] as const).map((side) => (
+                  <button
+                    type="button"
+                    key={side}
+                    className={`btn ${timerSide === side ? 'voice-btn listening' : ''}`}
+                    onClick={() => toggleTimer(side)}
+                  >
+                    {timerSide === side
+                      ? `⏹ ${tv(side === 'durL' ? '左' : '右')} ${Math.floor(elapsed / 60)}:${pad(elapsed % 60)}`
+                      : `⏱ ${tv(side === 'durL' ? '左' : '右')}`}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
           {chips.length > 0 && (

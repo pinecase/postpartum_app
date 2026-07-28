@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ReferenceLine, ResponsiveContainer, CartesianGrid, Legend,
 } from 'recharts';
-import { api, fmtTime, dayOfLife, localDatetimeValue, MotherDetailData } from '../api';
+import { api, fmtTime, dayOfLife, localDatetimeValue, MotherDetailData, Appointment } from '../api';
 import { useStaff } from '../StaffContext';
 import { useI18n } from '../i18n';
 import Modal from '../components/Modal';
@@ -99,6 +99,8 @@ export default function MotherDetail() {
         )}
       </div>
 
+      <ApptSection motherId={data.id} createdBy={current} />
+
       {chartData.length > 1 && (
         <div className="chart-grid" style={{ marginBottom: 14 }}>
           <div className="chart-box">
@@ -193,6 +195,101 @@ export default function MotherDetail() {
         />
       )}
     </>
+  );
+}
+
+// 妈妈日常安排：洗头/照灯/针灸等，全员可见，工作台提前一天提醒
+const APPT_PRESETS = ['洗头', '红外线照灯', '瘦身针灸', 'Kakak urut', 'Baby 拍摄', '产后修复', '中医调理'];
+
+function ApptSection({ motherId, createdBy }: { motherId: number; createdBy: string }) {
+  const { t } = useI18n();
+  const [items, setItems] = useState<Appointment[]>([]);
+  const [adding, setAdding] = useState(false);
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [time, setTime] = useState('');
+  const [title, setTitle] = useState('');
+
+  const load = useCallback(
+    () => api.get<Appointment[]>(`/api/mothers/${motherId}/appointments`).then(setItems),
+    [motherId]
+  );
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const save = async () => {
+    if (!title.trim()) return;
+    await api.post(`/api/mothers/${motherId}/appointments`, {
+      date, time: time || null, title: title.trim(), created_by: createdBy,
+    });
+    setTitle('');
+    setAdding(false);
+    load();
+  };
+
+  const complete = async (a: Appointment) => {
+    await api.patch(`/api/appointments/${a.id}`, { status: '已完成' });
+    load();
+  };
+
+  const remove = async (a: Appointment) => {
+    if (!window.confirm(t('common.confirmDelete'))) return;
+    await api.del(`/api/appointments/${a.id}`);
+    load();
+  };
+
+  return (
+    <div className="card">
+      <h3>
+        {t('appt.section')}
+        <button className="btn btn-sm" onClick={() => setAdding(!adding)}>{t('appt.add')}</button>
+      </h3>
+      {adding && (
+        <div style={{ marginBottom: 12 }}>
+          <div className="form-grid">
+            <div className="field">
+              <label>{t('handover.date')}</label>
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </div>
+            <div className="field">
+              <label>{t('appt.time')}</label>
+              <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+            </div>
+            <div className="field full">
+              <label>{t('appt.item')}</label>
+              <div className="chip-row" style={{ marginBottom: 6 }}>
+                {APPT_PRESETS.map((p) => (
+                  <button type="button" key={p} className={`chip ${title === p ? 'on' : ''}`} onClick={() => setTitle(p)}>
+                    {p}
+                  </button>
+                ))}
+              </div>
+              <input value={title} onChange={(e) => setTitle(e.target.value)} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+            <button className="btn btn-primary" onClick={save} disabled={!title.trim()}>{t('common.save')}</button>
+          </div>
+        </div>
+      )}
+      {items.map((a) => (
+        <div className="task-item" key={a.id}>
+          <span className={`badge ${a.status === '已完成' ? 'badge-done' : 'badge-info'}`}>
+            {a.date} {a.time || ''}
+          </span>
+          <span className="title" style={a.status === '已完成' ? { textDecoration: 'line-through', color: 'var(--muted)' } : {}}>
+            {a.title}
+          </span>
+          {a.notes && <span className="meta">{a.notes}</span>}
+          <span className="spacer" />
+          {a.status !== '已完成' && (
+            <button className="btn btn-sm" onClick={() => complete(a)}>✓</button>
+          )}
+          <button className="btn btn-sm" onClick={() => remove(a)}>✕</button>
+        </div>
+      ))}
+      {items.length === 0 && !adding && <div className="empty">{t('appt.none')}</div>}
+    </div>
   );
 }
 

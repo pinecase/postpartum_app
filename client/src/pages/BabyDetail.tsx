@@ -112,6 +112,23 @@ export default function BabyDetail() {
               ＋ {tv(type)}
             </button>
           ))}
+          <span className="meta" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            {t('baby.feedInterval')}
+            <select
+              value={data.feed_interval_min ?? ''}
+              onChange={async (e) => {
+                await api.patch(`/api/babies/${data.id}`, {
+                  feed_interval_min: e.target.value ? Number(e.target.value) : null,
+                });
+                load();
+              }}
+            >
+              <option value="">—</option>
+              {[120, 150, 180, 210, 240].map((m) => (
+                <option key={m} value={m}>{m / 60}h</option>
+              ))}
+            </select>
+          </span>
         </div>
       </div>
 
@@ -179,6 +196,24 @@ export default function BabyDetail() {
           </div>
         )}
       </div>
+
+      {/* 护理日记：Nurse note（仅医护可见的观察记录）按时间线展示 */}
+      {data.tasks.some((tk) => tk.title === '护理记录/观察' && tk.internal_note) && (
+        <div className="card">
+          <h3>📖 {t('baby.diary')}</h3>
+          {data.tasks
+            .filter((tk) => tk.title === '护理记录/观察' && tk.internal_note)
+            .map((tk) => (
+              <div className="handover-item" key={tk.id}>
+                <div className="head">
+                  <span className="badge badge-info">{fmtTime(tk.due_time)}</span>
+                  <span>{tk.created_by || '—'}</span>
+                </div>
+                <div style={{ whiteSpace: 'pre-wrap' }}>🔒 {tk.internal_note}</div>
+              </div>
+            ))}
+        </div>
+      )}
 
       <div className="card">
         <div className="tabs">

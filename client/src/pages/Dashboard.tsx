@@ -1,16 +1,49 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api, fmtTime, dayOfLife, Overview } from '../api';
+import { api, fmtTime, dayOfLife, Overview, Appointment } from '../api';
 import { useI18n } from '../i18n';
 import { useStaff } from '../StaffContext';
 
-// 距上次喂养的计时环：<2h 绿色，2-3h 琥珀，>3h 红色
-function FeedRing({ lastFeedTime, label }: { lastFeedTime: string | null; label: string }) {
+// 到点喂奶浏览器通知（页面开着时生效；每个宝宝每次到点只提醒一次）
+const notified = new Set<string>();
+function notifyDueFeeds(data: Overview, t: (k: string, p?: Record<string, string | number>) => string) {
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  for (const room of data.rooms) {
+    for (const b of room.babies) {
+      const interval = b.feed_interval_min || 180;
+      const last = b.last_feed ? new Date(b.last_feed.time).getTime() : 0;
+      const mins = (Date.now() - last) / 60000;
+      const key = `${b.id}:${b.last_feed?.time || 'none'}`;
+      if (b.last_feed && mins >= interval && !notified.has(key)) {
+        notified.add(key);
+        new Notification(`🍼 ${room.mother.room} ${b.name}`, {
+          body: t('dash.overdue'),
+          tag: key,
+        });
+      }
+    }
+  }
+}
+
+// 距上次喂养的计时环：按每个宝宝设定的喂奶间隔上色（默认 3 小时）
+function FeedRing({
+  lastFeedTime, label, intervalMin,
+}: {
+  lastFeedTime: string | null;
+  label: string;
+  intervalMin?: number | null;
+}) {
+  const interval = intervalMin || 180;
   const minutes = lastFeedTime
     ? Math.max(0, Math.floor((Date.now() - new Date(lastFeedTime).getTime()) / 60000))
     : null;
-  const frac = minutes == null ? 1 : Math.min(1, minutes / 240);
-  const color = minutes == null || minutes >= 180 ? 'var(--danger)' : minutes >= 120 ? 'var(--warning)' : 'var(--brand)';
+  const frac = minutes == null ? 1 : Math.min(1, minutes / interval);
+  const color =
+    minutes == null || minutes >= interval
+      ? 'var(--danger)'
+      : minutes >= interval * 0.8
+        ? 'var(--warning)'
+        : 'var(--brand)';
   const text =
     minutes == null ? '—' : minutes >= 60 ? `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, '0')}` : `${minutes}'`;
   const R = 24;
@@ -36,15 +69,35 @@ export default function Dashboard() {
   const { t, tv } = useI18n();
   const { current } = useStaff();
   const [data, setData] = useState<Overview | null>(null);
+  const [appts, setAppts] = useState<Appointment[]>([]);
+  const [notifyOn, setNotifyOn] = useState(
+    typeof Notification !== 'undefined' && Notification.permission === 'granted'
+  );
   const [error, setError] = useState('');
 
-  const load = () => api.get<Overview>('/api/overview').then(setData).catch((e) => setError(e.message));
+  const load = () =>
+    api.get<Overview>('/api/overview')
+      .then((d) => {
+        setData(d);
+        notifyDueFeeds(d, t);
+      })
+      .catch((e) => setError(e.message));
 
   useEffect(() => {
     load();
+    api.get<Appointment[]>('/api/appointments/upcoming?days=1').then(setAppts).catch(() => {});
     const timer = setInterval(load, 60_000);
     return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const enableNotify = async () => {
+    if (typeof Notification === 'undefined') return;
+    const p = await Notification.requestPermission();
+    setNotifyOn(p === 'granted');
+  };
+
+  const todayStr = new Date().toISOString().slice(0, 10);
 
   if (error) return <div className="card">{t('common.loadFailed')}：{error}</div>;
   if (!data) return <div className="empty">{t('common.loading')}</div>;
@@ -80,7 +133,31 @@ export default function Dashboard() {
             <div className="label">{t('dash.diapersToday')}</div>
           </div>
         </div>
+        <button
+          className="btn btn-sm"
+          style={{ marginTop: 10, background: 'rgba(255,255,255,.15)', borderColor: 'rgba(255,255,255,.4)', color: '#fff' }}
+          onClick={enableNotify}
+        >
+          {notifyOn ? t('dash.notifyOn') : t('dash.notify')}
+        </button>
       </div>
+
+      {appts.length > 0 && (
+        <div className="card">
+          <h3>{t('appt.upcoming')}</h3>
+          {appts.map((a) => (
+            <div className="task-item" key={a.id}>
+              <span className={`badge ${a.date === todayStr ? 'badge-warning' : 'badge-info'}`}>
+                {a.date === todayStr ? t('appt.today2') : t('appt.tomorrow')} {a.time || ''}
+              </span>
+              <span className="badge badge-room">{a.room}</span>
+              <span className="badge badge-mother">{a.mother_name}</span>
+              <span className="title">{a.title}</span>
+              {a.notes && <span className="meta">{a.notes}</span>}
+            </div>
+          ))}
+        </div>
+      )}
 
       {data.alerts.length > 0 && (
         <div className="card">
@@ -129,7 +206,11 @@ export default function Dashboard() {
             {babies.map((b) => (
               <Link to={`/babies/${b.id}`} key={b.id}>
                 <div className="baby-row">
-                  <FeedRing lastFeedTime={b.last_feed?.time ?? null} label={t('dash.sinceFeed')} />
+                  <FeedRing
+                    lastFeedTime={b.last_feed?.time ?? null}
+                    label={t('dash.sinceFeed')}
+                    intervalMin={b.feed_interval_min}
+                  />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div>
                       <span className="badge badge-baby">{t('common.baby')}</span>{' '}

@@ -32,8 +32,22 @@ CREATE TABLE IF NOT EXISTS babies (
   birth_weight_g INTEGER,
   gestational_age_weeks REAL,
   notes TEXT,
-  status TEXT NOT NULL DEFAULT '在住'
+  status TEXT NOT NULL DEFAULT '在住',
+  feed_interval_min INTEGER
 );
+
+CREATE TABLE IF NOT EXISTS appointments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  mother_id INTEGER NOT NULL REFERENCES mothers(id),
+  date TEXT NOT NULL,
+  time TEXT,
+  title TEXT NOT NULL,
+  notes TEXT,
+  status TEXT NOT NULL DEFAULT '待办',
+  created_by TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_appt_date ON appointments(date, status);
 
 CREATE TABLE IF NOT EXISTS baby_feeds (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

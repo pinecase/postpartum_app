@@ -283,6 +283,79 @@ app.get('/api/babies/:id', async (c) => {
 
 const babyExists = async (db, id) => db.prepare(`SELECT id FROM babies WHERE id = ?`).bind(id).first();
 
+app.patch('/api/babies/:id', async (c) => {
+  const id = c.req.param('id');
+  if (!(await babyExists(c.env.DB, id))) return err(c, 404, '未找到宝宝');
+  const b = await c.req.json();
+  const sets = [];
+  const vals = [];
+  for (const k of ['feed_interval_min', 'notes', 'name']) {
+    if (k in b) {
+      sets.push(`${k} = ?`);
+      vals.push(b[k]);
+    }
+  }
+  if (!sets.length) return err(c, 400, '无可更新字段');
+  await c.env.DB.prepare(`UPDATE babies SET ${sets.join(', ')} WHERE id = ?`).bind(...vals, id).run();
+  return c.json(await c.env.DB.prepare(`SELECT * FROM babies WHERE id = ?`).bind(id).first());
+});
+
+// ---------- 妈妈日常安排 ----------
+app.get('/api/appointments/upcoming', async (c) => {
+  const days = Math.min(14, Number(c.req.query('days')) || 2);
+  const from = new Date().toISOString().slice(0, 10);
+  const to = new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+  const { results } = await c.env.DB.prepare(
+    `SELECT a.*, m.name AS mother_name, m.room FROM appointments a
+     JOIN mothers m ON m.id = a.mother_id
+     WHERE a.status = '待办' AND a.date >= ? AND a.date <= ?
+     ORDER BY a.date, a.time`
+  ).bind(from, to).all();
+  return c.json(results);
+});
+
+app.get('/api/mothers/:id/appointments', async (c) => {
+  const { results } = await c.env.DB.prepare(
+    `SELECT * FROM appointments WHERE mother_id = ? ORDER BY date, time`
+  ).bind(c.req.param('id')).all();
+  return c.json(results);
+});
+
+app.post('/api/mothers/:id/appointments', async (c) => {
+  const b = await c.req.json();
+  if (!b.date || !b.title) return err(c, 400, '日期与项目必填');
+  const r = await c.env.DB.prepare(
+    `INSERT INTO appointments (mother_id, date, time, title, notes, created_by) VALUES (?, ?, ?, ?, ?, ?)`
+  ).bind(c.req.param('id'), b.date, b.time ?? null, b.title, b.notes ?? null, b.created_by ?? null).run();
+  return c.json(
+    await c.env.DB.prepare(`SELECT * FROM appointments WHERE id = ?`).bind(r.meta.last_row_id).first(),
+    201
+  );
+});
+
+app.patch('/api/appointments/:id', async (c) => {
+  const b = await c.req.json();
+  const sets = [];
+  const vals = [];
+  for (const k of ['date', 'time', 'title', 'notes', 'status']) {
+    if (k in b) {
+      sets.push(`${k} = ?`);
+      vals.push(b[k]);
+    }
+  }
+  if (!sets.length) return err(c, 400, '无可更新字段');
+  const id = c.req.param('id');
+  const r = await c.env.DB.prepare(`UPDATE appointments SET ${sets.join(', ')} WHERE id = ?`).bind(...vals, id).run();
+  if (!r.meta.changes) return err(c, 404, '未找到安排');
+  return c.json(await c.env.DB.prepare(`SELECT * FROM appointments WHERE id = ?`).bind(id).first());
+});
+
+app.delete('/api/appointments/:id', async (c) => {
+  const r = await c.env.DB.prepare(`DELETE FROM appointments WHERE id = ?`).bind(c.req.param('id')).run();
+  if (!r.meta.changes) return err(c, 404, '未找到安排');
+  return c.json({ ok: true });
+});
+
 app.post('/api/babies/:id/feeds', async (c) => {
   const id = c.req.param('id');
   if (!(await babyExists(c.env.DB, id))) return err(c, 404, '未找到宝宝');

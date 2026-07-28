@@ -252,6 +252,71 @@ app.get('/api/babies/:id', (req, res) => {
 
 const babyExists = (id) => db.prepare(`SELECT id FROM babies WHERE id = ?`).get(id);
 
+app.patch('/api/babies/:id', (req, res) => {
+  if (!babyExists(req.params.id)) return res.status(404).json({ error: '未找到宝宝' });
+  const sets = [];
+  const vals = [];
+  for (const k of ['feed_interval_min', 'notes', 'name']) {
+    if (k in req.body) {
+      sets.push(`${k} = ?`);
+      vals.push(req.body[k]);
+    }
+  }
+  if (!sets.length) return res.status(400).json({ error: '无可更新字段' });
+  db.prepare(`UPDATE babies SET ${sets.join(', ')} WHERE id = ?`).run(...vals, req.params.id);
+  res.json(db.prepare(`SELECT * FROM babies WHERE id = ?`).get(req.params.id));
+});
+
+// ---------- 妈妈日常安排 ----------
+app.get('/api/mothers/:id/appointments', (req, res) => {
+  res.json(db.prepare(`SELECT * FROM appointments WHERE mother_id = ? ORDER BY date, time`).all(req.params.id));
+});
+
+app.post('/api/mothers/:id/appointments', (req, res) => {
+  const { date, time, title, notes, created_by } = req.body;
+  if (!date || !title) return res.status(400).json({ error: '日期与项目必填' });
+  const r = db.prepare(
+    `INSERT INTO appointments (mother_id, date, time, title, notes, created_by) VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(req.params.id, date, time ?? null, title, notes ?? null, created_by ?? null);
+  res.status(201).json(db.prepare(`SELECT * FROM appointments WHERE id = ?`).get(r.lastInsertRowid));
+});
+
+app.patch('/api/appointments/:id', (req, res) => {
+  const sets = [];
+  const vals = [];
+  for (const k of ['date', 'time', 'title', 'notes', 'status']) {
+    if (k in req.body) {
+      sets.push(`${k} = ?`);
+      vals.push(req.body[k]);
+    }
+  }
+  if (!sets.length) return res.status(400).json({ error: '无可更新字段' });
+  const r = db.prepare(`UPDATE appointments SET ${sets.join(', ')} WHERE id = ?`).run(...vals, req.params.id);
+  if (!r.changes) return res.status(404).json({ error: '未找到安排' });
+  res.json(db.prepare(`SELECT * FROM appointments WHERE id = ?`).get(req.params.id));
+});
+
+app.delete('/api/appointments/:id', (req, res) => {
+  const r = db.prepare(`DELETE FROM appointments WHERE id = ?`).run(req.params.id);
+  if (!r.changes) return res.status(404).json({ error: '未找到安排' });
+  res.json({ ok: true });
+});
+
+// 今明安排（工作台提醒卡）
+app.get('/api/appointments/upcoming', (req, res) => {
+  const days = Math.min(14, Number(req.query.days) || 2);
+  const from = new Date().toISOString().slice(0, 10);
+  const to = new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+  res.json(
+    db.prepare(
+      `SELECT a.*, m.name AS mother_name, m.room FROM appointments a
+       JOIN mothers m ON m.id = a.mother_id
+       WHERE a.status = '待办' AND a.date >= ? AND a.date <= ?
+       ORDER BY a.date, a.time`
+    ).all(from, to)
+  );
+});
+
 app.post('/api/babies/:id/feeds', (req, res) => {
   if (!babyExists(req.params.id)) return res.status(404).json({ error: '未找到宝宝' });
   const { time, method, amount_ml, duration_min, notes, recorded_by, photos } = req.body;

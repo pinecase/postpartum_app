@@ -31,6 +31,20 @@ export interface Baby {
   gestational_age_weeks: number | null;
   notes: string | null;
   status: string;
+  feed_interval_min: number | null;
+}
+
+export interface Appointment {
+  id: number;
+  mother_id: number;
+  date: string;
+  time: string | null;
+  title: string;
+  notes: string | null;
+  status: string;
+  created_by: string | null;
+  mother_name?: string;
+  room?: string;
 }
 
 export interface Feed {

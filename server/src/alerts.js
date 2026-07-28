@@ -55,7 +55,9 @@ export function computeAlerts() {
     }
 
     const f = lastFeed.get(b.id);
-    if (f && new Date(f.time).getTime() < Date.now() - 4 * HOURS) {
+    // 按每个宝宝设定的喂奶间隔（默认 4 小时）判断
+    const gapMs = b.feed_interval_min ? b.feed_interval_min * 60000 : 4 * HOURS;
+    if (f && new Date(f.time).getTime() < Date.now() - gapMs) {
       const hrs = Math.floor((Date.now() - new Date(f.time).getTime()) / HOURS);
       alerts.push({ ...subject, level: 'warning', code: 'feed_gap', params: { hours: hrs }, message: `已 ${hrs} 小时未记录喂养`, time: f.time });
     } else if (!f) {
