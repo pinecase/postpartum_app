@@ -15,6 +15,8 @@ type Tab = 'feeds' | 'diapers' | 'vitals' | 'cares';
 type ModalKind = Tab | null;
 
 const TAB_KEYS: Tab[] = ['feeds', 'diapers', 'vitals', 'cares'];
+const TAB_ICONS: Record<Tab, string> = { feeds: '🍼', diapers: '🧷', vitals: '🌡', cares: '🛁' };
+const QUICK_ICONS: Record<string, string> = { '喂奶时间': '🍼', '换尿布': '🧷', '洗澡记录': '🛁', '体征测量': '🌡' };
 
 export default function BabyDetail() {
   const { id } = useParams();
@@ -109,7 +111,7 @@ export default function BabyDetail() {
               className="btn btn-sm"
               onClick={() => nav(`/tasks?new=${encodeURIComponent(type)}&baby=${data.id}`)}
             >
-              ＋ {tv(type)}
+              {QUICK_ICONS[type]} {tv(type)}
             </button>
           ))}
           <span className="meta" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -219,7 +221,7 @@ export default function BabyDetail() {
         <div className="tabs">
           {TAB_KEYS.map((k) => (
             <button key={k} className={tab === k ? 'active' : ''} onClick={() => setTab(k)}>
-              {t(`tab.${k}`)}
+              {TAB_ICONS[k]} {t(`tab.${k}`)}
             </button>
           ))}
           <button className="active" style={{ marginLeft: 'auto', background: 'var(--pink)', borderColor: 'var(--pink)' }} onClick={() => setModal(tab)}>

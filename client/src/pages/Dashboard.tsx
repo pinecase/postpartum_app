@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api, fmtTime, dayOfLife, Overview, Appointment } from '../api';
 import { useI18n } from '../i18n';
 import { useStaff } from '../StaffContext';
@@ -68,6 +68,7 @@ function FeedRing({
 export default function Dashboard() {
   const { t, tv } = useI18n();
   const { current } = useStaff();
+  const nav = useNavigate();
   const [data, setData] = useState<Overview | null>(null);
   const [appts, setAppts] = useState<Appointment[]>([]);
   const [notifyOn, setNotifyOn] = useState(
@@ -234,6 +235,11 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      {/* 浮动秒表：一键进入亲喂计时/喂奶记录 */}
+      <button className="fab" title="⏱" onClick={() => nav('/tasks?new=%E5%96%82%E5%A5%B6%E6%97%B6%E9%97%B4')}>
+        ⏱
+      </button>
 
       {data.pending_tasks.length > 0 && (
         <div className="card">

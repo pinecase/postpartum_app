@@ -514,6 +514,91 @@ td.wrap {
   font-size: 12px;
 }
 
+/* ---------- 类型图标 / 大圆盘计时器 / 浮动按钮 ---------- */
+.task-ico {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--brand-soft);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 19px;
+  flex-shrink: 0;
+}
+
+.timer-row {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  padding: 8px 0;
+}
+
+.timer-circle {
+  width: 116px;
+  height: 116px;
+  border-radius: 50%;
+  border: 4px solid var(--brand);
+  background: var(--card);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  cursor: pointer;
+  color: var(--brand-deep);
+}
+
+.timer-circle.running {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+  color: var(--danger);
+  animation: pulse 1.2s infinite;
+}
+
+@keyframes pulse {
+  50% {
+    box-shadow: 0 0 0 8px rgba(176, 58, 48, 0.12);
+  }
+}
+
+.timer-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.timer-time {
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.timer-play {
+  font-size: 16px;
+}
+
+.fab {
+  position: fixed;
+  right: 16px;
+  bottom: 92px;
+  z-index: 25;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: none;
+  background: var(--brand);
+  color: #fff;
+  font-size: 24px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+
+@media (min-width: 768px) {
+  .fab {
+    bottom: 24px;
+  }
+}
+
 /* ---------- PIN 锁屏 / 更新提示 ---------- */
 .pin-gate {
   position: fixed;

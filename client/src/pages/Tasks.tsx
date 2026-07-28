@@ -17,6 +17,14 @@ const TASK_TYPES = [
   '脚部按摩', '鼻泪管按摩', '补充剂/用药', '护理记录/观察', '汇总统计', '宝宝拍照', '其他',
 ];
 
+// 每种类型的识别图标（列表行、下拉框、快捷按钮通用）
+export const TYPE_ICONS: Record<string, string> = {
+  '喂奶时间': '🍼', '换尿布': '🧷', '体征测量': '🌡', '洗澡记录': '🛁', '晾臀': '🍑',
+  '母婴同室': '🤱', '脚部按摩': '🦶', '鼻泪管按摩': '👁', '补充剂/用药': '💊',
+  '护理记录/观察': '📝', '汇总统计': '📊', '宝宝拍照': '📷', '其他': '📌',
+};
+export const iconFor = (title: string) => TYPE_ICONS[title] || '📌';
+
 // 结构化填写项。short 为合成文字用的中文短名（经 tv() 翻译）；
 // showIf 控制字段随其它选择动态显示（如亲喂才出现哺乳侧）。
 interface FieldDef {
@@ -328,6 +336,7 @@ export default function Tasks() {
 
         {tasks.map((tk) => (
           <div className="task-item" key={tk.id}>
+            <span className="task-ico">{iconFor(tk.title)}</span>
             <span className={`badge ${tk.status === '已完成' ? 'badge-done' : 'badge-warning'}`}>
               {tk.status === '已完成' ? t('tasks.done') : fmtTime(tk.due_time)}
             </span>
@@ -723,7 +732,7 @@ function TaskModal({
             <label>{t('tasks.taskTitle')}</label>
             <select value={taskType} onChange={(e) => setTaskType(e.target.value)}>
               {TASK_TYPES.map((v) => (
-                <option key={v} value={v}>{tv(v)}</option>
+                <option key={v} value={v}>{iconFor(v)} {tv(v)}</option>
               ))}
             </select>
           </div>
@@ -799,19 +808,30 @@ function TaskModal({
           ))}
           {taskType === '喂奶时间' && isBF(fieldValues) && (
             <div className="field full">
-              <div className="btn-row">
-                {(['durL', 'durR'] as const).map((side) => (
-                  <button
-                    type="button"
-                    key={side}
-                    className={`btn ${timerSide === side ? 'voice-btn listening' : ''}`}
-                    onClick={() => toggleTimer(side)}
-                  >
-                    {timerSide === side
-                      ? `⏹ ${tv(side === 'durL' ? '左' : '右')} ${Math.floor(elapsed / 60)}:${pad(elapsed % 60)}`
-                      : `⏱ ${tv(side === 'durL' ? '左' : '右')}`}
-                  </button>
-                ))}
+              {/* 左右乳房大圆盘计时器：点击开始/停止，停止自动累加到上方分钟格 */}
+              <div className="timer-row">
+                {(['durL', 'durR'] as const).map((side) => {
+                  const running = timerSide === side;
+                  const accMin = Number(fieldValues[side] || 0);
+                  return (
+                    <button
+                      type="button"
+                      key={side}
+                      className={`timer-circle ${running ? 'running' : ''}`}
+                      onClick={() => toggleTimer(side)}
+                    >
+                      <span className="timer-label">
+                        {tv(side === 'durL' ? '左' : '右')}
+                      </span>
+                      <span className="timer-time">
+                        {running
+                          ? `${pad(Math.floor(elapsed / 60))}:${pad(elapsed % 60)}`
+                          : `${accMin}min`}
+                      </span>
+                      <span className="timer-play">{running ? '⏸' : '▶'}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
