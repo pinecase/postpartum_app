@@ -35,6 +35,13 @@ describe('任务 → 护理记录同步规则', () => {
     expect(out[0].payload.notes).toContain('吐奶 0.6');
   });
 
+  it('瓶喂母乳可标注冻奶（BM·Frozen milk）', () => {
+    const out = buildRecordSyncs(base({
+      fieldValues: { method: '瓶喂母乳', amount: '90', bmtype: 'Frozen milk' },
+    }));
+    expect(out[0].payload.notes).toContain('BM·Frozen milk');
+  });
+
   it('FM 新旧罐与吐奶情况（多选）进入喂养记录说明', () => {
     const out = buildRecordSyncs(base({
       fieldValues: { method: '配方奶', amount: '60', fmtype: 'New', vomit: '0.5', vomitnote: 'Spilt/From nose' },
