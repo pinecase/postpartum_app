@@ -59,7 +59,12 @@ const URINE_STOOL: FieldDef[] = [
 const ORAL_OPTS = ['Clean', 'Milk residue', 'Tofu paste', 'Pearl spot', 'Oral thrush', 'Tongue tie wound'];
 const UC_OPTS = ['Clean', 'Yellowish', 'Brownish', 'Bloodstain', 'Bleeding', 'Bloodclot', 'Smelly', 'Damp', 'Granulation', 'Almost drop', 'Drop', 'Root redness', 'Swollen'];
 const ABDOMEN_OPTS = ['Done', 'Soft', '---'];
-const VOMIT_STEPS = [0.1, 0.5, 1, 2];
+const VOMIT_STEPS = [0.1, 0.5, 1];
+// 吐奶备注（可多选）与奶粉新旧罐——按现场习惯用英文原词记录
+const VOMIT_NOTES = ['Spilt', 'Burp', 'Hiccup', 'Phlegm', 'From nose'];
+const FM_TYPES = ['Old', 'New'];
+const hasVomit = (fv: Record<string, string>) => !!fv.vomit;
+const isFM = (fv: Record<string, string>) => fv.method === '配方奶' || fv.method === '混合喂养';
 
 const TYPE_FIELDS: Record<string, FieldDef[]> = {
   '喂奶时间': [
@@ -70,9 +75,11 @@ const TYPE_FIELDS: Record<string, FieldDef[]> = {
     num('bm', 'tasks.bmMl', '母乳', 'ml', undefined, isMixed),
     num('fm', 'tasks.fmMl', '配方奶', 'ml', undefined, isMixed),
     num('amount', 'feeds.amountMl', '奶量', 'ml', undefined, isBottle),
-    { id: 'fmnote', labelKey: 'tasks.fmNote', short: '', kind: 'text', showIf: (fv) => fv.method === '配方奶' || fv.method === '混合喂养' },
+    sel('fmtype', 'tasks.fmType', 'FM', FM_TYPES, isFM),
+    { id: 'fmnote', labelKey: 'tasks.fmNote', short: '', kind: 'text', showIf: isFM },
     ...URINE_STOOL,
     { id: 'vomit', labelKey: 'tasks.vomit', short: '吐奶', kind: 'vomit' },
+    { id: 'vomitnote', labelKey: 'tasks.vomitNote', short: '', kind: 'multi', options: VOMIT_NOTES, showIf: hasVomit },
   ],
   '换尿布': [
     ...URINE_STOOL,
@@ -91,6 +98,7 @@ const TYPE_FIELDS: Record<string, FieldDef[]> = {
     num('weight', 'vitals.weightG', '体重', 'g'),
     ...URINE_STOOL,
     { id: 'vomit', labelKey: 'tasks.vomit', short: '吐奶', kind: 'vomit' },
+    { id: 'vomitnote', labelKey: 'tasks.vomitNote', short: '', kind: 'multi', options: VOMIT_NOTES, showIf: hasVomit },
     sel('oral', 'tasks.oral', '口腔', ORAL_OPTS),
     { id: 'eye', labelKey: 'tasks.eye', short: '眼部', kind: 'text' },
     { id: 'nasal', labelKey: 'tasks.nasal', short: '鼻腔', kind: 'text' },
@@ -190,8 +198,9 @@ export function buildRecordSyncs(s: SyncInput): { url: string; payload: Record<s
     if (v('position')) extra.push(v('position'));
     if (v('bm')) extra.push(`母乳 ${v('bm')}ml`);
     if (v('fm')) extra.push(`配方奶 ${v('fm')}ml`);
+    if (v('fmtype')) extra.push(`FM·${v('fmtype')}`);
     if (v('fmnote')) extra.push(v('fmnote'));
-    if (v('vomit')) extra.push(`吐奶 ${v('vomit')}`);
+    if (v('vomit')) extra.push(`吐奶 ${v('vomit')}${v('vomitnote') ? `（${v('vomitnote')}）` : ''}`);
     const amount = v('method') === '混合喂养'
       ? (Number(v('bm') || 0) + Number(v('fm') || 0)) || null
       : n('amount');
@@ -223,7 +232,7 @@ export function buildRecordSyncs(s: SyncInput): { url: string; payload: Record<s
     for (const id of ['oral', 'eye', 'nasal', 'ear', 'uc', 'abdomen']) {
       if (v(id)) checklist.push(`${labelWord[id]}·${v(id)}`);
     }
-    if (v('vomit')) checklist.push(`吐奶 ${v('vomit')}`);
+    if (v('vomit')) checklist.push(`吐奶 ${v('vomit')}${v('vomitnote') ? `（${v('vomitnote')}）` : ''}`);
     out.push({
       url: B('cares'),
       payload: { ...base, care_type: s.title, notes: [...checklist, s.notes].filter(Boolean).join('、') || null },
@@ -660,9 +669,11 @@ function TaskModal({
     for (const f of visibleFields) {
       const v = (values[f.id] || '').trim();
       if (!v || v === '无') continue;
+      if (f.id === 'vomitnote') continue; // 并入吐奶一项显示
       if (f.kind === 'number') parts.push(`${tv(f.short)} ${v}${f.unit || ''}`);
       else if (f.kind === 'time') parts.push(`${tv(f.short)} ${v}`);
-      else if (f.kind === 'vomit') parts.push(`${tv('吐奶')} ${v}`);
+      else if (f.kind === 'vomit') parts.push(`${tv('吐奶')} ${v}${values.vomitnote ? `（${values.vomitnote}）` : ''}`);
+      else if (f.id === 'fmtype') parts.push(`FM·${v}`);
       else if (LABELED_FIELDS.has(f.id)) parts.push(`${tv(labelWord[f.id])}·${f.kind === 'select' ? tv(v) : v}`);
       else if (f.kind === 'select') parts.push(tv(v));
       else parts.push(v);
@@ -789,7 +800,7 @@ function TaskModal({
                     <button
                       type="button"
                       className="chip"
-                      onClick={() => setFieldValues((fv) => ({ ...fv, vomit: '' }))}
+                      onClick={() => setFieldValues((fv) => ({ ...fv, vomit: '', vomitnote: '' }))}
                     >
                       ↺
                     </button>

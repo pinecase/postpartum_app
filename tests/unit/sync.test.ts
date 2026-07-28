@@ -35,6 +35,23 @@ describe('任务 → 护理记录同步规则', () => {
     expect(out[0].payload.notes).toContain('吐奶 0.6');
   });
 
+  it('FM 新旧罐与吐奶情况（多选）进入喂养记录说明', () => {
+    const out = buildRecordSyncs(base({
+      fieldValues: { method: '配方奶', amount: '60', fmtype: 'New', vomit: '0.5', vomitnote: 'Spilt/From nose' },
+    }));
+    expect(out[0].payload.notes).toContain('FM·New');
+    expect(out[0].payload.notes).toContain('吐奶 0.5（Spilt/From nose）');
+  });
+
+  it('洗澡记录的吐奶情况同样带备注', () => {
+    const out = buildRecordSyncs(base({
+      taskType: '洗澡记录', title: '洗澡记录',
+      fieldValues: { vomit: '0.1', vomitnote: 'Burp' },
+    }));
+    expect(out[0].url).toBe('/api/babies/7/cares');
+    expect(out[0].payload.notes).toContain('吐奶 0.1（Burp）');
+  });
+
   it('混合喂养：奶量 = 母乳 + 配方奶之和', () => {
     const out = buildRecordSyncs(base({
       fieldValues: { method: '混合喂养', bm: '60', fm: '30' },
