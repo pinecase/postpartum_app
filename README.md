@@ -20,6 +20,9 @@
 - **会员管理（v2.6）**：管理后台 → 会员管理。管理员可添加成员账号、重置密码、设/撤管理员、停用/启用；系统保证至少保留一名管理员
 - **自动双备份（v2.6）**：GitHub Actions 每天（马来西亚时间凌晨 3 点）自动导出 D1 数据库两份——① Actions 附件（留 90 天）② 仓库 `backups` 分支（留最近 60 份）。Cloudflare D1 自带 Time Travel 还能回滚最近 30 天任意时间点，等于第三重保险。需要配置与部署相同的 `CLOUDFLARE_API_TOKEN` Secret
 - **手机 App（PWA）**：手机浏览器打开网址 → 菜单选「添加到主屏幕」（iPhone Safari：分享 → 添加到主屏幕；Android Chrome：菜单 → 安装应用/添加到主屏幕），即以全屏 App 形式使用，带图标
+- **原生 App 外壳（Capacitor）**：`android/` 与 `ios/` 为原生工程，App 加载线上网页（网页更新无需重装）。
+  - **Android APK**：GitHub → Actions → *Build Android APK* → Run workflow，跑完在 Artifacts 下载 `app-debug.apk` 安装（手机需允许安装未知来源应用）
+  - **iOS**：需要 Mac + Xcode（`npx cap open ios`）+ Apple Developer 账号（US$99/年）签名后装机或上架 App Store；没有账号时 iPhone 建议用上面的 PWA 方式
 
 ## 技术栈
 

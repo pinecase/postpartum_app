@@ -1,0 +1,37 @@
+# 一键打 Android 安装包（APK）：
+#   GitHub → Actions → Build Android APK → Run workflow
+#   跑完后在运行页面底部 Artifacts 下载 postpartum-care-apk，解压得到 app-debug.apk，
+#   传到安卓手机上点击安装（需允许"安装未知来源应用"）。
+# App 是壳＋线上网页：内容始终跟随 Cloudflare 上的最新版，网页更新无需重新装 APK。
+name: Build Android APK
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - run: npm ci
+      - name: 构建前端并同步到安卓工程
+        run: npm run build && npx cap sync android
+
+      - name: Gradle 打包（debug 签名，可直接安装）
+        run: cd android && chmod +x gradlew && ./gradlew assembleDebug --no-daemon
+
+      - name: 上传 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: postpartum-care-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 90

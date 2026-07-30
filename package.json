@@ -16,6 +16,9 @@
     "cf:db:seed": "npm run seed:sql && wrangler d1 execute postpartum-care --remote --file=./db/seed.sql",
     "cf:db:clear": "wrangler d1 execute postpartum-care --remote --file=./db/clear.sql",
     "cf:db:migrate": "wrangler d1 execute postpartum-care --remote --file=./db/migrate-v6.sql; wrangler d1 execute postpartum-care --remote --file=./db/migrate-v7.sql",
+    "app:sync": "npm run build && cap sync",
+    "app:apk": "npm run app:sync && cd android && ./gradlew assembleDebug",
+    "app:ios": "npm run app:sync && cap open ios",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:bdd": "cucumber-js",
@@ -27,9 +30,13 @@
     "client"
   ],
   "dependencies": {
+    "@capacitor/android": "^8.4.2",
+    "@capacitor/core": "^8.4.2",
+    "@capacitor/ios": "^8.4.2",
     "hono": "^4.6.14"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.4.2",
     "@cucumber/cucumber": "^13.2.0",
     "@stryker-mutator/core": "^9.6.1",
     "@stryker-mutator/vitest-runner": "^9.6.1",

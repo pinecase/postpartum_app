@@ -1,0 +1,9 @@
+{
+  "appId": "com.pinecase.postpartumcare",
+  "appName": "月子护理",
+  "webDir": "client/dist",
+  "server": {
+    "url": "https://postpartum-care.pinweood500.workers.dev",
+    "cleartext": false
+  }
+}
